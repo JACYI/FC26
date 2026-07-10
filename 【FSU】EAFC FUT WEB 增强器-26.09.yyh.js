@@ -13126,24 +13126,31 @@
         
                     const toClubPlayers = [];
                     const toStoragePlayers = [];
+                    const packDupToStorage = [];
                     //26.02 修改存储仓库的评分为当前仓库最低值
                     const minStorageRating = _.min(_.map(repositories.Item.storage.values(), 'rating'));
-        
+
                     for (const item of openResult.response.items) {
                         const inClub = events.getItemBy(2, { definitionId: item.definitionId , upgrades:null}, false, repositories.Item.club.items.values());
-        
+
                         if (inClub.length) {
-                            if (item.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length < 100) {
+                            if (item.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length + packDupToStorage.length < 100) {
                                 item.duplicateId = _.find(inClub).id;
                                 item.pile = ItemPile.PURCHASED;
                                 item.injuryType = PlayerInjury.NONE;
                                 toStoragePlayers.push(item);
                             }
                         } else {
-                            toClubPlayers.push(item);
+                            //包内重复检测：同一 definitionId 已在待发往俱乐部的列表中
+                            const alreadyInBatch = _.some(toClubPlayers, { definitionId: item.definitionId });
+                            if (alreadyInBatch) {
+                                packDupToStorage.push(item);
+                            } else {
+                                toClubPlayers.push(item);
+                            }
                         }
                     }
-        
+
                     if (toClubPlayers.length > 0) {
                         const moveClubResult = await new Promise((resolve) => {
                             services.Item.move(toClubPlayers, ItemPile.CLUB).observe(controller, (e, t) => {
@@ -13158,6 +13165,19 @@
                                 copy.packCount = index + 1;
                                 return copy;
                             }));
+                            //俱乐部移入成功，刷新仓库，处理包内重复球员
+                            if (packDupToStorage.length > 0) {
+                                repositories.Item.club.items.reset();
+                                for (const dupItem of packDupToStorage) {
+                                    const inClubNow = events.getItemBy(2, { definitionId: dupItem.definitionId , upgrades:null}, false, repositories.Item.club.items.values());
+                                    if (inClubNow.length && dupItem.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length < 100) {
+                                        dupItem.duplicateId = _.find(inClubNow).id;
+                                        dupItem.pile = ItemPile.PURCHASED;
+                                        dupItem.injuryType = PlayerInjury.NONE;
+                                        toStoragePlayers.push(dupItem);
+                                    }
+                                }
+                            }
                         } else {
                             toUnassigned(true);
                             errorOccurred = true;
@@ -13185,13 +13205,13 @@
                             break;
                         }
                     }
-        
-                    if (toClubPlayers.length + toStoragePlayers.length !== openResult.response.items.length) {
+
+                    if (toClubPlayers.length + toStoragePlayers.length + packDupToStorage.length !== openResult.response.items.length) {
                         toUnassigned(true);
                         errorOccurred = true;
                         break;
                     }
-                    
+
                     console.log(`✅ 已开包：${pack.id}`, openResult.response.items);
                     await new Promise((resolve) => {
                         const randomDelay = 500 + Math.floor(Math.random() * 1000); // 2000-4000毫秒之间的随机值
