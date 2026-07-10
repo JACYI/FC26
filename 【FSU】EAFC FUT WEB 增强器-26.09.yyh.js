@@ -10298,6 +10298,7 @@
                         fy("trypack.button.again") + `(${fastCount})`,
                         () => {
                             rewardsController.onBackButton();
+                            info.run._fastBatchInfo = { total: fastCount + 1, current: 0 };
                             events.isSBCCache(set.id, challenge.id);
                         },
                         "call-to-action fsu-challengefastbtn"
