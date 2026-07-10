@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# FSU original scripts (not ours)
+【FSU】EAFC FUT WEB 增强器-26.08.user.js
+【FSU】EAFC FUT WEB 增强器-26.09.user.js
+
+# Embedded FSU git repo
+fc26_fsu_mod/
+
+# Data cache
+data/
+log/
+reports/
+
+# Temp debug files
+_*.txt
+_*.json
+_*.png
+debug_*.txt
+dump_*.json
+lang_*.png
+*_log.txt
+slot_*.txt
+squad_*.txt
+sbc_status_report*

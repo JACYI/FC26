@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.futbin.com)",
+      "WebFetch(domain:www.fut.gg)",
+      "Bash(curl *)",
+      "Bash(sed 's/<[^>]*>//g')",
+      "Bash",
+      "WebFetch",
+      "WebSearch",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(taskkill //F //IM chrome.exe)",
+      "Bash(rm -rf \"C:/chrome_debug_profile\")"
+    ],
+    "deny": [],
+    "ask_on_operation": false
+  }
+}
