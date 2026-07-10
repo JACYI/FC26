@@ -5287,6 +5287,7 @@
                                 fy(["fastsbc.batchbtn", _totalFC]),
                                 () => {
                                     if (info.base.fastsbctips) {
+                                        info.run._fastBatchInfo = { total: _totalFC, current: 0 };
                                         events.isSBCCache(fastSid, fastCid)
                                     } else {
                                         events.popup(
@@ -5295,6 +5296,7 @@
                                             (t) => {
                                                 if (t === 2) {
                                                     info.base.fastsbctips = true;
+                                                    info.run._fastBatchInfo = { total: _totalFC, current: 0 };
                                                     events.isSBCCache(fastSid, fastCid)
                                                 }
                                             }
