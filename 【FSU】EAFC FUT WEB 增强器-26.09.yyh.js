@@ -3550,6 +3550,7 @@
                                 fy(["fastsbc.sbcbtntext",qs]),
                                 () => {
                                     if (info.base.fastsbctips) {
+                                        info.run._fastBatchRemaining = qs - 1;
                                         events.isSBCCache(sId, cId)
                                     } else {
                                         events.popup(
@@ -3558,6 +3559,7 @@
                                             (t) => {
                                                 if (t === 2) {
                                                     info.base.fastsbctips = true;
+                                                    info.run._fastBatchRemaining = qs - 1;
                                                     events.isSBCCache(sId, cId)
                                                 }
                                             }
@@ -5215,6 +5217,7 @@
                         let fastIds = _.map(_.split(_.keys(fastInfo)[0], '#'),s => parseInt(s));
                         let fastSid = fastIds[1];
                         let fastCid = fastIds[0];
+                        let _totalFC = fastCount;
                         fastCount--;
 
                         e._fsufastsbcbtn = events.createButton(
@@ -5222,6 +5225,7 @@
                             fy(["fastsbc.sbcbtntext",fastCount]),
                             () => {
                                 if (info.base.fastsbctips) {
+                                    info.run._fastBatchRemaining = _totalFC - 1;
                                     events.isSBCCache(fastSid, fastCid)
                                 } else {
                                     events.popup(
@@ -5230,6 +5234,7 @@
                                         (t) => {
                                             if (t === 2) {
                                                 info.base.fastsbctips = true;
+                                                info.run._fastBatchRemaining = _totalFC - 1;
                                                 events.isSBCCache(fastSid, fastCid)
                                             }
                                         }
@@ -5385,6 +5390,7 @@
                                     fy(["fastsbc.sbcbtntext", fastCount]),
                                     () => {
                                         if (info.base.fastsbctips) {
+                                            info.run._fastBatchRemaining = fastCount - 1;
                                             events.isSBCCache(i._fsu.subSet.setId, sId)
                                         } else {
                                             events.popup(
@@ -5393,6 +5399,7 @@
                                                 (t) => {
                                                     if (t === 2) {
                                                         info.base.fastsbctips = true;
+                                                        info.run._fastBatchRemaining = fastCount - 1;
                                                         events.isSBCCache(i._fsu.subSet.setId, sId)
                                                     }
                                                 }
@@ -10263,6 +10270,17 @@
         //SBC完成后的奖励弹窗
         //24.20 新插入在一键完成后出现的弹层
         events.showRewardsView = (set) => {
+            //快速完成批量模式：还有剩余次数则自动继续完成，不弹窗
+            if (info.run._fastBatchRemaining !== undefined) {
+                if (info.run._fastBatchRemaining > 0) {
+                    info.run._fastBatchRemaining--;
+                    //不弹窗，直接开始下一次
+                    let challenge = _.first(set.challenges.values());
+                    events.isSBCCache(set.id, challenge.id);
+                    return;
+                }
+                delete info.run._fastBatchRemaining;
+            }
             var rewardsController = new UTGameRewardsViewController(set.awards);
             rewardsController.init(),
             rewardsController.modalDisplayDimensions.width = "24em";
@@ -13910,6 +13928,7 @@
                         fy(["fastsbc.sbcbtntext", fastCount]),
                         (z) => {
                             if (info.base.fastsbctips) {
+                                info.run._fastBatchRemaining = fastCount - 1;
                                 events.isSBCCache(z.setId, z.id)
                             } else {
                                 events.popup(
@@ -13918,6 +13937,7 @@
                                     (t) => {
                                         if (t === 2) {
                                             info.base.fastsbctips = true;
+                                            info.run._fastBatchRemaining = fastCount - 1;
                                             events.isSBCCache(z.setId, z.id)
                                         }
                                     }
