@@ -1458,7 +1458,8 @@
             "fastsbc.popupm":["此模式将快速执行指定SBC，优先未分配和进行排除选项，不会识别未分配可交易替换功能。此为实验功能谨慎使用，过量可能导致BAN提交等不知名惩罚，且可能提交掉你的有价值球员。确认后本次使用插件将不再提示。","此模式將快速執行指定SBC，優先未分配和進行排除選項，不會識別未分配可交易替換功能。此為實驗功能謹慎使用，過量可能導致BAN提交等不知名懲罰，且可能提交掉你的有價值球員。確認後本次使用外掛將不再提示。","This mode will quickly execute the specified SBC, give priority to unassigned and exclude options, and will not recognize unassigned tradable replacements. This is an experimental feature to use with caution. Excessive use may lead to unknown penalties such as BAN submission, and may submit your valuable players. After confirmation, this use of the plugin will no longer prompt."],
             "fastsbc.success":["快速任务成功，请适度使用切勿过于频繁。","快速任務成功，請適度使用切勿過於頻繁。","The quick SBC is successful, please use it in moderation and not too frequently."],
             "fastsbc.title":["重复球员可快速完成 %1 个SBC","重複球員可快速完成 %1 個SBC","Repeat players can quickly complete %1 SBC"],
-            "fastsbc.sbcbtntext":["一键完成(%1)","一鍵完成(%1)","Completion(%1)"],
+            "fastsbc.sbcbtntext":["一键三连(%1)","一鍵三連(%1)","One-click Batch(%1)"],
+            "fastsbc.batch_progress":["正在连续完成提交(%1/%2)...","正在連續完成提交(%1/%2)...","Completing batch (%1/%2)..."],
             "players.bodytype_1":["瘦中型","瘦中型","Lean Medium"],
             "players.bodytype_2": ["均衡中型", "均衡中型", "Average Medium"],
             "players.bodytype_3": ["壮中型", "壯中型", "Stocky Medium"],
@@ -3550,7 +3551,7 @@
                                 fy(["fastsbc.sbcbtntext",qs]),
                                 () => {
                                     if (info.base.fastsbctips) {
-                                        info.run._fastBatchRemaining = qs - 1;
+                                        info.run._fastBatchInfo = { total: qs, current: 0 };
                                         events.isSBCCache(sId, cId)
                                     } else {
                                         events.popup(
@@ -3559,7 +3560,7 @@
                                             (t) => {
                                                 if (t === 2) {
                                                     info.base.fastsbctips = true;
-                                                    info.run._fastBatchRemaining = qs - 1;
+                                                    info.run._fastBatchInfo = { total: qs, current: 0 };
                                                     events.isSBCCache(sId, cId)
                                                 }
                                             }
@@ -5225,7 +5226,7 @@
                             fy(["fastsbc.sbcbtntext",fastCount]),
                             () => {
                                 if (info.base.fastsbctips) {
-                                    info.run._fastBatchRemaining = _totalFC - 1;
+                                    info.run._fastBatchInfo = { total: _totalFC, current: 0 };
                                     events.isSBCCache(fastSid, fastCid)
                                 } else {
                                     events.popup(
@@ -5234,7 +5235,7 @@
                                         (t) => {
                                             if (t === 2) {
                                                 info.base.fastsbctips = true;
-                                                info.run._fastBatchRemaining = _totalFC - 1;
+                                                info.run._fastBatchInfo = { total: _totalFC, current: 0 };
                                                 events.isSBCCache(fastSid, fastCid)
                                             }
                                         }
@@ -5390,7 +5391,7 @@
                                     fy(["fastsbc.sbcbtntext", fastCount]),
                                     () => {
                                         if (info.base.fastsbctips) {
-                                            info.run._fastBatchRemaining = fastCount - 1;
+                                            info.run._fastBatchInfo = { total: fastCount, current: 0 };
                                             events.isSBCCache(i._fsu.subSet.setId, sId)
                                         } else {
                                             events.popup(
@@ -5399,7 +5400,7 @@
                                                 (t) => {
                                                     if (t === 2) {
                                                         info.base.fastsbctips = true;
-                                                        info.run._fastBatchRemaining = fastCount - 1;
+                                                        info.run._fastBatchInfo = { total: fastCount, current: 0 };
                                                         events.isSBCCache(i._fsu.subSet.setId, sId)
                                                     }
                                                 }
@@ -10271,15 +10272,15 @@
         //24.20 新插入在一键完成后出现的弹层
         events.showRewardsView = (set) => {
             //快速完成批量模式：还有剩余次数则自动继续完成，不弹窗
-            if (info.run._fastBatchRemaining !== undefined) {
-                if (info.run._fastBatchRemaining > 0) {
-                    info.run._fastBatchRemaining--;
-                    //不弹窗，直接开始下一次
+            if (info.run._fastBatchInfo) {
+                info.run._fastBatchInfo.current++;
+                if (info.run._fastBatchInfo.current < info.run._fastBatchInfo.total) {
+                    events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current, info.run._fastBatchInfo.total]);
                     let challenge = _.first(set.challenges.values());
                     events.isSBCCache(set.id, challenge.id);
                     return;
                 }
-                delete info.run._fastBatchRemaining;
+                delete info.run._fastBatchInfo;
             }
             var rewardsController = new UTGameRewardsViewController(set.awards);
             rewardsController.init(),
