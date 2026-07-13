@@ -3552,6 +3552,7 @@
                                 fy(["fastsbc.sbcbtntext",qs]),
                                 () => {
                                     if (info.base.fastsbctips) {
+                                        info.run._lastAction = "single";
                                         events.isSBCCache(sId, cId)
                                     } else {
                                         events.popup(
@@ -3571,13 +3572,15 @@
                             this._fsu.quicklyBtn.getRootElement().style.fontSize = "90%";
                             this._fsu?.quickOther.append(this._fsu.quicklyBtn.getRootElement());
                             //batch btn
-                            if (qs > 1) {
+                            let batchCount = Math.floor(qs / 3);
+                            if (batchCount >= 1) {
                                 var _bBtn = events.createButton(
                                     new UTButtonControl(),
-                                    fy(["fastsbc.batchbtn", qs]),
+                                    fy(["fastsbc.batchbtn", batchCount]),
                                     () => {
                                         if (info.base.fastsbctips) {
-                                            info.run._fastBatchInfo = { total: qs, current: 0 };
+                                            info.run._lastAction = "batch";
+                                            info.run._fastBatchInfo = { total: 3, current: 0 };
                                             events.isSBCCache(sId, cId)
                                         } else {
                                             events.popup(
@@ -3586,7 +3589,8 @@
                                                 (t) => {
                                                     if (t === 2) {
                                                         info.base.fastsbctips = true;
-                                                        info.run._fastBatchInfo = { total: qs, current: 0 };
+                                                        info.run._lastAction = "batch";
+                                                        info.run._fastBatchInfo = { total: 3, current: 0 };
                                                         events.isSBCCache(sId, cId)
                                                     }
                                                 }
@@ -5256,6 +5260,7 @@
                             () => {
                                 if (info.base.fastsbctips) {
                                     if (info.base.fastsbctips) {
+                                    info.run._lastAction = "single";
                                     events.isSBCCache(fastSid, fastCid)
                                 } else {
                                     events.popup(
@@ -5265,6 +5270,7 @@
                                             if (t === 2) {
                                                 info.base.fastsbctips = true;
                                                 info.base.fastsbctips = true;
+                                                info.run._lastAction = "single";
                                                 events.isSBCCache(fastSid, fastCid)
                                             }
                                         }
@@ -5279,15 +5285,17 @@
 
                         if(fastCount == 0){
                             e._fsufastsbcbtn.setInteractionState(0);
-
+                        }
                         //batch btn
-                        if (_totalFC > 1) {
+                        let batchCount = Math.floor(_totalFC / 3);
+                        if (batchCount >= 1) {
                             e._fsuBatchBtn = events.createButton(
                                 new UTCurrencyButtonControl(),
-                                fy(["fastsbc.batchbtn", _totalFC]),
+                                fy(["fastsbc.batchbtn", batchCount]),
                                 () => {
                                     if (info.base.fastsbctips) {
-                                        info.run._fastBatchInfo = { total: _totalFC, current: 0 };
+                                        info.run._lastAction = "batch";
+                                        info.run._fastBatchInfo = { total: 3, current: 0 };
                                         events.isSBCCache(fastSid, fastCid)
                                     } else {
                                         events.popup(
@@ -5296,7 +5304,8 @@
                                             (t) => {
                                                 if (t === 2) {
                                                     info.base.fastsbctips = true;
-                                                    info.run._fastBatchInfo = { total: _totalFC, current: 0 };
+                                                    info.run._lastAction = "batch";
+                                                    info.run._fastBatchInfo = { total: 3, current: 0 };
                                                     events.isSBCCache(fastSid, fastCid)
                                                 }
                                             }
@@ -5309,7 +5318,6 @@
                             e._fsuBatchBtn.getRootElement().style.padding = "2px 6px";
                             e._fsuBatchBtn.__currencyLabel.innerHTML = events.getFastSbcSubText(info.base.fastsbc[])
                             e._fsufastsbcbtn.getRootElement().after(e._fsuBatchBtn.getRootElement());
-                        }
                         }
                     }else{
                         e._fsufastsbcbtn = events.createButton(
@@ -5451,6 +5459,7 @@
                                     fy(["fastsbc.sbcbtntext", fastCount]),
                                     () => {
                                         if (info.base.fastsbctips) {
+                                            info.run._lastAction = "single";
                                             events.isSBCCache(i._fsu.subSet.setId, sId)
                                         } else {
                                             events.popup(
@@ -5459,6 +5468,7 @@
                                                 (t) => {
                                                     if (t === 2) {
                                                         info.base.fastsbctips = true;
+                                                        info.run._lastAction = "single";
                                                         events.isSBCCache(i._fsu.subSet.setId, sId)
                                                     }
                                                 }
@@ -5473,13 +5483,15 @@
                                 }
                                 i._progressBar.getRootElement().after(i._fsu.fastBtn.getRootElement());
                                 //batch btn
-                                if (fastCount > 1) {
+                                let batchCount = Math.floor(fastCount / 3);
+                                if (batchCount >= 1) {
                                     var _bBtn = events.createButton(
                                         new UTCurrencyButtonControl(),
-                                        fy(["fastsbc.batchbtn", fastCount]),
+                                        fy(["fastsbc.batchbtn", batchCount]),
                                         () => {
                                             if (info.base.fastsbctips) {
-                                                info.run._fastBatchInfo = { total: fastCount, current: 0 };
+                                                info.run._lastAction = "batch";
+                                                info.run._fastBatchInfo = { total: 3, current: 0 };
                                                 events.isSBCCache(i._fsu.subSet.setId, sId)
                                             } else {
                                                 events.popup(
@@ -5488,7 +5500,8 @@
                                                     (t) => {
                                                         if (t === 2) {
                                                             info.base.fastsbctips = true;
-                                                            info.run._fastBatchInfo = { total: fastCount, current: 0 };
+                                                            info.run._lastAction = "batch";
+                                                            info.run._fastBatchInfo = { total: 3, current: 0 };
                                                             events.isSBCCache(i._fsu.subSet.setId, sId)
                                                         }
                                                     }
@@ -10380,23 +10393,31 @@
             const fastInfo = info.base.fastsbc[`${challenge.id}#${set.id}`];
             const controllerType = cntlr.current().className == 'UTSBCHubViewController' ? 1 : (cntlr.current().className.includes('UTUnassignedItems') ? 2 : 0);
             if(controllerType){
-                const fastCount = events.fastSBCQuantity(controllerType == 1,_.filter(repositories.Item.getUnassignedItems(), item => item.isPlayer() && item.duplicateId !== 0),fastInfo) - 1;
+                const rawCount = events.fastSBCQuantity(controllerType == 1,_.filter(repositories.Item.getUnassignedItems(), item => item.isPlayer() && item.duplicateId !== 0),fastInfo);
+                const fastCount = rawCount - 1;
                 if(fastInfo && fastCount >= 1){
-                    tryAgainBtn = events.createButton(
-                        new UTCurrencyButtonControl(),
-                        fy("trypack.button.again") + `(${fastCount})`,
-                        () => {
-                            rewardsController.onBackButton();
-                            events.isSBCCache(set.id, challenge.id);
-                        },
-                        "call-to-action fsu-challengefastbtn"
-                    )
-                    Object.assign(tryAgainBtn.getRootElement().style, {
-                        marginTop: ".5rem",
-                        width: "100%"
-                    });
-                    tryAgainBtn.__currencyLabel.innerHTML = events.getFastSbcSubText(fastInfo);
-                    rewardsController.getView().getRootElement().querySelector("footer").appendChild(tryAgainBtn.getRootElement());
+                    const isBatchMode = info.run._lastAction === "batch";
+                    const required = isBatchMode ? 3 : 1;
+                    if (fastCount >= required) {
+                        tryAgainBtn = events.createButton(
+                            new UTCurrencyButtonControl(),
+                            fy("trypack.button.again") + `(${fastCount})`,
+                            () => {
+                                rewardsController.onBackButton();
+                                if (isBatchMode) {
+                                    info.run._fastBatchInfo = { total: 3, current: 0 };
+                                }
+                                events.isSBCCache(set.id, challenge.id);
+                            },
+                            "call-to-action fsu-challengefastbtn"
+                        )
+                        Object.assign(tryAgainBtn.getRootElement().style, {
+                            marginTop: ".5rem",
+                            width: "100%"
+                        });
+                        tryAgainBtn.__currencyLabel.innerHTML = events.getFastSbcSubText(fastInfo);
+                        rewardsController.getView().getRootElement().querySelector("footer").appendChild(tryAgainBtn.getRootElement());
+                    }
                 }
             }
             //25.21 领取并发送球员到俱乐部按钮添加
@@ -14018,6 +14039,7 @@
                         fy(["fastsbc.sbcbtntext", fastCount]),
                         (z) => {
                             if (info.base.fastsbctips) {
+                                info.run._lastAction = "single";
                                 events.isSBCCache(z.setId, z.id)
                             } else {
                                 events.popup(
@@ -14026,6 +14048,7 @@
                                     (t) => {
                                         if (t === 2) {
                                             info.base.fastsbctips = true;
+                                            info.run._lastAction = "single";
                                             events.isSBCCache(z.setId, z.id)
                                         }
                                     }
@@ -14049,13 +14072,15 @@
                 }
                 this._btnConfirm.getRootElement().after(fastSbcBtn.getRootElement())
                 //batch btn
-                if (fastCount > 1) {
+                let batchCount = Math.floor(fastCount / 3);
+                if (batchCount >= 1) {
                     var _bBtn = events.createButton(
                         new UTCurrencyButtonControl(),
-                        fy(["fastsbc.batchbtn", fastCount]),
+                        fy(["fastsbc.batchbtn", batchCount]),
                         (z) => {
                             if (info.base.fastsbctips) {
-                                info.run._fastBatchInfo = { total: fastCount, current: 0 };
+                                info.run._lastAction = "batch";
+                                info.run._fastBatchInfo = { total: 3, current: 0 };
                                 events.isSBCCache(z.setId, z.id)
                             } else {
                                 events.popup(
@@ -14064,7 +14089,8 @@
                                     (t) => {
                                         if (t === 2) {
                                             info.base.fastsbctips = true;
-                                            info.run._fastBatchInfo = { total: fastCount, current: 0 };
+                                            info.run._lastAction = "batch";
+                                            info.run._fastBatchInfo = { total: 3, current: 0 };
                                             events.isSBCCache(z.setId, z.id)
                                         }
                                     }
