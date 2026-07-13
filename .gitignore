@@ -15,12 +15,9 @@ venv/
 Thumbs.db
 .DS_Store
 
-# FSU original scripts (not ours)
-【FSU】EAFC FUT WEB 增强器-26.08.user.js
-【FSU】EAFC FUT WEB 增强器-26.09.user.js
-
-# Embedded FSU git repo
-fc26_fsu_mod/
+# FSU dev working copies (not published)
+fc26_fsu_mod/working/
+fc26_fsu_mod/*.txt
 
 # Data cache
 data/
