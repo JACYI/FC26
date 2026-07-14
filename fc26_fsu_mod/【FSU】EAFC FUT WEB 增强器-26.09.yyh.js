@@ -8154,7 +8154,7 @@
             if(a && typeof a === 'object'){
                 b = a;
             }
-            if(!b.hasOwnProperty("card_style")){
+            if(!b.hasOwnProperty("card_style") || b["card_style"] == 1){
                 b["card_style"] = 2;
             }
             for (let n in info.setfield) {
