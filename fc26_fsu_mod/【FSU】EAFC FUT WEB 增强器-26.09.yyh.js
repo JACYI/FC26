@@ -8645,6 +8645,14 @@
             events.changeLoadingText("loadingclose.template1");
             info.run.template = true;
             events.notice("notice.templateload",1);
+            //预缓存：方案填充期间避免重复全量扫描俱乐部
+            const _templateCache = events.getItemBy(2, events.ignorePlayerToCriteria({}));
+            const _cacheByDefId = new Map();
+            for (const _cp of _templateCache) {
+                if (!_cacheByDefId.has(_cp.definitionId)) {
+                    _cacheByDefId.set(_cp.definitionId, _cp);
+                }
+            }
             // 如果路径不存在则创建，并返回该对象
             const fsu = _.get(e, 'challenge.squad._fsu') || _.set(e, 'challenge.squad._fsu', {});
             
@@ -8717,7 +8725,7 @@
                                 let planPlayer = planSquad[planIndex];
                                 player.definitionId = planPlayer.Player_Resource;
                                 player.stackCount = 1;
-                                let cachePlayer = _.find(events.getItemBy(2,{...basicCriteria,"definitionId":player.definitionId}));
+                                let cachePlayer = _cacheByDefId.get(player.definitionId);
                                 if(cachePlayer){
                                     player = cachePlayer;
                                     ownedPlayer++;
@@ -8796,17 +8804,19 @@
                         PlayerPosition[indexPos]
                     ]);
 
-                    let searchResultsList = _.orderBy(
-                        events.getItemBy(2, searchCriteria),
-                        [
+                    let searchResultsList = _.chain(_templateCache)
+                        .filter(p => !ExcludeDefIds.includes(p.databaseId)
+                            && p.rating <= searchMaxRating
+                            && p.basePossiblePositions.includes(indexPos)
+                            && !info.lock.includes(p.id))
+                        .orderBy([
                             item => item.basePossiblePositions.includes(indexPos),
                             item => item.rating,
                             item => item.teamId === conceptPlayer.teamId,
                             item => item.nationId === conceptPlayer.nationId,
                             item => item.leagueId === conceptPlayer.leagueId
-                        ],
-                        ['desc', 'asc', 'desc', 'desc', 'desc']
-                    );
+                        ], ['desc', 'asc', 'desc', 'desc', 'desc'])
+                        .value();
 
                     let satisfyPlayers = [];
                     for (let fillPlayer of searchResultsList) {
