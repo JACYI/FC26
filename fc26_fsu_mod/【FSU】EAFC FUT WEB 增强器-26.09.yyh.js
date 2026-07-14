@@ -10735,21 +10735,7 @@
                         listControl.rating.visible = false;
                         listControl.rating.order = null;
                     } else {
-                        const hasRating = this.squad._fsuHasRating;
-                        if(hasRating !== 0){
-                            if(max - hasRating < min - hasRating){
-                                listControl.rating.order = "desc";
-                            }
-                        }
-                    }
-                    
-                    //LT和GT强制修正顺序
-                    if(this._fsu?.fsuCriteria){
-                        if(this._fsu.fsuCriteria?.LTrating){
-                            listControl.rating.order = "desc";
-                        } else if(this._fsu.fsuCriteria?.GTrating){
-                            listControl.rating.order = "asc";
-                        }
+                        //始终默认从低到高（26.09-mod-05 移除覆盖为降序的逻辑）
                     }
 
 
