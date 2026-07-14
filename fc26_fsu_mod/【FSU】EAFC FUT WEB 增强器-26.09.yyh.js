@@ -3718,6 +3718,17 @@
                     quickRight.appendChild(quickRightList)
                     this._fsu.quickRightList = quickRightList;
 
+                    //限制右侧磁贴总数不超过10个，超出则缩减低分磁贴
+                    let otherBtnCount = 1; // 黑按钮
+                    if(repositories.Item.numItemsInCache(ItemPile.PURCHASED)) otherBtnCount++;
+                    if(repositories.Item.numItemsInCache(ItemPile.TRANSFER)) otherBtnCount++;
+                    if(repositories.Item.numItemsInCache(ItemPile.STORAGE)) otherBtnCount++;
+                    if(info.set.sbc_sback) otherBtnCount++;
+                    let maxRatingTiles = Math.max(0, 10 - otherBtnCount);
+                    if(ratingArray.length > maxRatingTiles){
+                        ratingArray = ratingArray.slice(0, maxRatingTiles);
+                    }
+
                     for (let i of ratingArray) {
                         let rightRatingBtn = events.createButton(
                             new UTButtonControl(),
