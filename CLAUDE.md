@@ -338,6 +338,24 @@ FC26/
 - **Platform**: PC (crossplay enabled)
 - **Active Squad**: 4-3-2-1 (manager: guan2), rating 92, chemistry 32/33
 
+## Code Modification Rules
+
+### 每次修改必须验证语法
+
+**修改 JS 文件时，每次修改前后都必须执行语法检查：**
+
+```bash
+node --check fc26_fsu_mod/【FSU】EAFC FUT WEB 增强器-26.09.yyh.js
+```
+
+规则：
+1. **修改前**：先检查原始文件语法是否通过（`OK` 或无输出），确认基线
+2. **每次编辑后**：立即运行语法检查，确保修改不引入语法错误
+3. **多个无关区域的修改**：分批提交，每批修改后验证语法，缩小问题范围
+4. **错误处理**：如果 `node --check` 报错，先排查当前修改——不要继续在同一个文件上做更多修改，直到错误修复
+
+**不遵守此规则的后果**：这次花了大几个小时追一个 `}` 不匹配，就是因为修改后没有即时验证，累积了4个区域的问题导致错误位置漂移，排查极为困难。
+
 ## Reference Websites
 
 - https://www.futbin.com/ — Player prices, SBC solutions, market data

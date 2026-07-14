@@ -3641,6 +3641,7 @@
                                 this._fsu.quicklyBtn.getRootElement().after(_bBtn.getRootElement());
                             }
                         }
+                        }
                     }
                 }
 
@@ -5655,6 +5656,8 @@
                                     i._fsu.fastBtn.getRootElement().after(_bBtn.getRootElement());
                                 }
                             }
+                        }
+                        }
                         }
                     }
 
@@ -14263,6 +14266,7 @@
                     _bBtn.getRootElement().style.padding = "2px 6px";
                     _bBtn.__currencyLabel.innerHTML = events.getFastSbcSubText(fastInfo)
                     fastSbcBtn.getRootElement().after(_bBtn.getRootElement());
+                }
                 }
             }else{
                 this._fsu?.fastSbcBtn?.hide();
