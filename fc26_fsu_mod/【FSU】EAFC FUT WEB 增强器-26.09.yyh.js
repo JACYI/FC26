@@ -5317,7 +5317,6 @@
                             e._fsuBatchBtn.getRootElement().style.fontSize = "75%";
                             e._fsuBatchBtn.getRootElement().style.padding = "2px 6px";
                             e._fsuBatchBtn.__currencyLabel.innerHTML = events.getFastSbcSubText(info.base.fastsbc[`${fastCid}#${fastSid}`])
-                            e._fsufastsbcbtn.getRootElement().after(e._fsuBatchBtn.getRootElement());
                         }
                     }else{
                         e._fsufastsbcbtn = events.createButton(
@@ -5332,6 +5331,9 @@
                     e._fsufastsbcbtn.getRootElement().style.width = "100%";
 
                     e.getRootElement().querySelector(".challenge").appendChild(e._fsufastsbcbtn.getRootElement())
+                    if(e._fsuBatchBtn){
+                        e._fsufastsbcbtn.getRootElement().after(e._fsuBatchBtn.getRootElement());
+                    }
 
                 }
             }
