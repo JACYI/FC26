@@ -1460,6 +1460,7 @@
             "fastsbc.title":["重复球员可快速完成 %1 个SBC","重複球員可快速完成 %1 個SBC","Repeat players can quickly complete %1 SBC"],
             "fastsbc.sbcbtntext":["一键完成","一鍵完成","Complete"],
             "fastsbc.batchbtn":["一键三连(%1)","一鍵三連(%1)","Batch(%1)"],
+            "fastsbc.black":["黑","黑","Special"],
             "fastsbc.batch_progress":["正在连续完成提交(%1/%2)...","正在連續完成提交(%1/%2)...","Completing batch (%1/%2)..."],
             "players.bodytype_1":["瘦中型","瘦中型","Lean Medium"],
             "players.bodytype_2": ["均衡中型", "均衡中型", "Average Medium"],
@@ -3733,6 +3734,22 @@
                         this._fsu[`rightRatingBtn_${i}`] = rightRatingBtn;
                         quickRightList.append(rightRatingBtn.getRootElement());
                     }
+
+                    //黑卡按钮（特殊球员筛选：TOTW/TOTS等）
+                    let blackBtn = events.createButton(
+                        new UTButtonControl(),
+                        fy("fastsbc.black"),
+                        () => {
+                            events.squadPositionSelection(
+                                thisController,
+                                {levelId: 3},
+                                null
+                            )
+                        },
+                        "im"
+                    );
+                    this._fsu.blackBtn = blackBtn;
+                    quickRightList.append(blackBtn.getRootElement());
 
                     //未分配按钮
                     if(repositories.Item.numItemsInCache(ItemPile.PURCHASED)){
