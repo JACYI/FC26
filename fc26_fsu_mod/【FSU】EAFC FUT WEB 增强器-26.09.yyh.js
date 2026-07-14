@@ -3746,14 +3746,14 @@
                         quickRightList.append(rightRatingBtn.getRootElement());
                     }
 
-                    //黑卡按钮（TOTW/rareflag:3 + TOTS/rareflag:11 筛选）
+                    //黑卡按钮（TOTW:3 + TOTS:11 + FOF:18/20/28/62/63 筛选）
                     let blackBtn = events.createButton(
                         new UTButtonControl(),
                         fy("fastsbc.black"),
                         () => {
                             events.squadPositionSelection(
                                 thisController,
-                                {rareflag: [3, 11]},
+                                {rareflag: [3, 11, 18, 20, 28, 62, 63]},
                                 null
                             )
                         },
