@@ -3746,14 +3746,14 @@
                         quickRightList.append(rightRatingBtn.getRootElement());
                     }
 
-                    //黑卡按钮（特殊球员筛选：TOTW/TOTS等）
+                    //黑卡按钮（TOTW/TOTS等SBC常用特殊球员筛选）
                     let blackBtn = events.createButton(
                         new UTButtonControl(),
                         fy("fastsbc.black"),
                         () => {
                             events.squadPositionSelection(
                                 thisController,
-                                {levelId: 3},
+                                {rareflag: [1, 53]},
                                 null
                             )
                         },
