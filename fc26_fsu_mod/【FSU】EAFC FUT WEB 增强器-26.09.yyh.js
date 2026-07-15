@@ -1458,7 +1458,7 @@
             "fastsbc.popupm":["此模式将快速执行指定SBC，优先未分配和进行排除选项，不会识别未分配可交易替换功能。此为实验功能谨慎使用，过量可能导致BAN提交等不知名惩罚，且可能提交掉你的有价值球员。确认后本次使用插件将不再提示。","此模式將快速執行指定SBC，優先未分配和進行排除選項，不會識別未分配可交易替換功能。此為實驗功能謹慎使用，過量可能導致BAN提交等不知名懲罰，且可能提交掉你的有價值球員。確認後本次使用外掛將不再提示。","This mode will quickly execute the specified SBC, give priority to unassigned and exclude options, and will not recognize unassigned tradable replacements. This is an experimental feature to use with caution. Excessive use may lead to unknown penalties such as BAN submission, and may submit your valuable players. After confirmation, this use of the plugin will no longer prompt."],
             "fastsbc.success":["快速任务成功，请适度使用切勿过于频繁。","快速任務成功，請適度使用切勿過於頻繁。","The quick SBC is successful, please use it in moderation and not too frequently."],
             "fastsbc.title":["重复球员可快速完成 %1 个SBC","重複球員可快速完成 %1 個SBC","Repeat players can quickly complete %1 SBC"],
-            "fastsbc.sbcbtntext":["一键完成","一鍵完成","Complete"],
+            "fastsbc.sbcbtntext":["一键完成(%1)","一鍵完成(%1)","Complete(%1)"],
             "fastsbc.batchbtn":["一键三连(%1)","一鍵三連(%1)","Batch(%1)"],
             "fastsbc.black":["黑","黑","Special"],
             "fastsbc.clearbtn":["一键清空(%1)","一鍵清空(%1)","Clear All(%1)"],
@@ -1511,6 +1511,7 @@
             "trypack.foot.info3":["此功能是通过EA公示概率模拟出的开启后获得的球员效果，此过程中不会与EA有数据交互，不会对你此后开包有所影响，仅供娱乐、切勿当真。","此功能是通過EA公示概率模擬出的開啟後獲得的球員效果，此過程中不會與EA有資料互動，不會對你此後開包有所影響，僅供娛樂、切勿當真。","This function is a player effect obtained after opening simulated by EA's publicity probability. It is for entertainment only and should not be taken seriously."],
             "trypack.popup.suffix":["（模拟开包）","（模擬開包）","(Simulate)"],
             "trypack.button.again":["再来一次","再來一次","Try Again"],
+            "trypack.button.batchagain":["再来三连(%1)","再來三連(%1)","Batch Again(%1)"],
             "builder.firststorage":["优先使用球员仓库球员","優先使用球員倉庫球員","Priority to use player storage players"],
             "builder.firststorage.short":["优先仓库球员","優先倉庫球員","Priority storage"],
             "fastsbc.nosbcdata":["快速SBC：首次需进入SBC页面读取信息后才会显示","快速SBC：首次需進入SBC頁面讀取資訊後才會顯示","Quick SBC: It will not be displayed until you enter the SBC page to read the information for the first time."],
@@ -10550,9 +10551,13 @@
                     const isBatchMode = info.run._lastAction === "batch";
                     const required = isBatchMode ? 3 : 1;
                     if (fastCount >= required) {
+                        const displayCount = isBatchMode ? Math.floor(fastCount / 3) : fastCount;
+                        const btnText = isBatchMode
+                            ? fy(["trypack.button.batchagain", displayCount])
+                            : fy("trypack.button.again") + `(${fastCount})`;
                         tryAgainBtn = events.createButton(
                             new UTCurrencyButtonControl(),
-                            fy("trypack.button.again") + `(${fastCount})`,
+                            btnText,
                             () => {
                                 rewardsController.onBackButton();
                                 if (isBatchMode) {
