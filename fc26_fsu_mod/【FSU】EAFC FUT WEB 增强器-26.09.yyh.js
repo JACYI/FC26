@@ -12189,6 +12189,22 @@
         //24.23 添加拦截器来截获提交的SBC
         const originalSubmitChallenge = UTSBCService.prototype.submitChallenge;
         UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
+            //提交前捕获阵容评分（用于缓存上次提交记录）
+            let _cachedRatings = null, _cachedChallengeId = null;
+            try {
+                if (o && o.squad && o.id) {
+                    const players = o.squad.getFieldPlayers();
+                    const ratings = players
+                        .filter(p => p._item && typeof p._item.rating === 'number')
+                        .map(p => p._item.rating)
+                        .sort((a, b) => b - a);
+                    if (ratings.length === 11) {
+                        _cachedRatings = ratings.join(",");
+                        _cachedChallengeId = o.id;
+                    }
+                }
+            } catch(e) {}
+
             let r = originalSubmitChallenge.apply(this, arguments);
             let s = this;
             r.observe(this, function(e,t) {
@@ -12224,6 +12240,20 @@
                         ts: Date.now()
                     });
                     GM_setValue("SBCDailyLog", JSON.stringify(dailyLog));
+                    //缓存本次提交评分，供阵容补全默认填充（30条上限，超过删最旧10条）
+                    if (_cachedRatings && _cachedChallengeId && t.data && t.data.setId) {
+                        try {
+                            const key = `${t.data.setId}#${_cachedChallengeId}`;
+                            let cache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
+                            cache[key] = {v: _cachedRatings, ts: Date.now()};
+                            const keys = Object.keys(cache);
+                            if (keys.length > 30) {
+                                keys.sort((a, b) => (cache[a].ts || 0) - (cache[b].ts || 0));
+                                keys.slice(0, 10).forEach(k => delete cache[k]);
+                            }
+                            GM_setValue("SBCLastRatings", JSON.stringify(cache));
+                        } catch(e) {}
+                    }
                 }
             });
             return r;
@@ -14986,10 +15016,27 @@
                             console.log(thisController._challenge)
                             let va = thisController._squad.getNumOfRequiredPlayers() - thisController._squad.getFieldPlayers().filter(i => i.isValid()).length,
                             fillRating = events.needRatingsCount(hasRating, thisController._squad),
-                            inputText = fy(va ? "squadcmpl.placeholder" : "squadcmpl.placeholder_zero");
+                            inputText;
 
-                            if(fillRating.length && fillRating[0].lackRatings.length == 0 && fillRating[0].ratings.length && hasRating){
-                                inputText = [fy("squadcmpl.placeholder"),fillRating.length == "0" && va == 0 ? "" : fillRating[0].ratings.join(`,`)];
+                            //优先使用上次提交的评分缓存
+                            try {
+                                const setId = thisController._set?.id;
+                                const challengeId = thisController._challenge?.id;
+                                if (setId && challengeId) {
+                                    const allCache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
+                                    const lastEntry = allCache[`${setId}#${challengeId}`];
+                                    if (lastEntry) {
+                                        inputText = [fy("squadcmpl.placeholder"), lastEntry.v || lastEntry];
+                                    }
+                                }
+                            } catch(e) {}
+
+                            if (!inputText) {
+                                if(fillRating.length && fillRating[0].lackRatings.length == 0 && fillRating[0].ratings.length && hasRating){
+                                    inputText = [fy("squadcmpl.placeholder"),fillRating.length == "0" && va == 0 ? "" : fillRating[0].ratings.join(`,`)];
+                                }else{
+                                    inputText = fy(va ? "squadcmpl.placeholder" : "squadcmpl.placeholder_zero");
+                                }
                             }
 
                             if(exactRating){
