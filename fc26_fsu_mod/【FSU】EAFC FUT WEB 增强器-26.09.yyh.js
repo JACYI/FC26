@@ -8654,12 +8654,6 @@
                     _cacheByDefId.set(_cp.definitionId, _cp);
                 }
             }
-            //判断SBC是否有化学要求 — 有化学要求的用缓存（需要大量尝试找最佳化学匹配），没化学要求的用原生查询（直接找一个能用的就够）
-            const _hasChemReq = e.challenge && e.challenge.eligibilityRequirements &&
-                e.challenge.eligibilityRequirements.some(req =>
-                    req.getFirstKey() === SBCEligibilityKey.CHEMISTRY_POINTS ||
-                    req.getFirstKey() === SBCEligibilityKey.ALL_PLAYERS_CHEMISTRY_POINTS
-                );
             // 如果路径不存在则创建，并返回该对象
             const fsu = _.get(e, 'challenge.squad._fsu') || _.set(e, 'challenge.squad._fsu', {});
             
@@ -8811,45 +8805,19 @@
                         PlayerPosition[indexPos]
                     ]);
 
-                    let searchResultsList;
-                    if (_hasChemReq) {
-                        //有化学要求 → 缓存过滤（反复尝试找最佳化学匹配，避免重复全量扫描俱乐部）
-                        const _excludeSet = new Set(ExcludeDefIds);
-                        const _lockSet = new Set(info.lock);
-                        searchResultsList = _.chain(_templateCache)
-                            .filter(p => !_excludeSet.has(p.databaseId)
-                                && p.rating <= searchMaxRating
-                                && p.basePossiblePositions.includes(indexPos)
-                                && !_lockSet.has(p.id))
-                            .orderBy([
-                                item => item.basePossiblePositions.includes(indexPos),
-                                item => item.rating,
-                                item => item.teamId === conceptPlayer.teamId,
-                                item => item.nationId === conceptPlayer.nationId,
-                                item => item.leagueId === conceptPlayer.leagueId
-                            ], ['desc', 'asc', 'desc', 'desc', 'desc'])
-                            .value();
-                    } else {
-                        //无化学要求 → 原生查询（直接找一个能用的，不需要反复试化学）
-                        let rsCriteria = {
-                            "NEdatabaseId": ExcludeDefIds,
-                            "LTrating": searchMaxRating,
-                            "bepos": indexPos,
-                            "lock": false
-                        };
-                        rsCriteria = events.ignorePlayerToCriteria(rsCriteria);
-                        searchResultsList = _.orderBy(
-                            events.getItemBy(2, rsCriteria),
-                            [
-                                item => item.basePossiblePositions.includes(indexPos),
-                                item => item.rating,
-                                item => item.teamId === conceptPlayer.teamId,
-                                item => item.nationId === conceptPlayer.nationId,
-                                item => item.leagueId === conceptPlayer.leagueId
-                            ],
-                            ['desc', 'asc', 'desc', 'desc', 'desc']
-                        );
-                    }
+                    let searchResultsList = _.chain(_templateCache)
+                        .filter(p => !ExcludeDefIds.includes(p.databaseId)
+                            && p.rating <= searchMaxRating
+                            && p.basePossiblePositions.includes(indexPos)
+                            && !info.lock.includes(p.id))
+                        .orderBy([
+                            item => item.basePossiblePositions.includes(indexPos),
+                            item => item.rating,
+                            item => item.teamId === conceptPlayer.teamId,
+                            item => item.nationId === conceptPlayer.nationId,
+                            item => item.leagueId === conceptPlayer.leagueId
+                        ], ['desc', 'asc', 'desc', 'desc', 'desc'])
+                        .value();
 
                     let satisfyPlayers = [];
                     for (let fillPlayer of searchResultsList) {
@@ -8870,11 +8838,11 @@
                         const firstCandidate = _.first(_.orderBy(
                             satisfyPlayers,
                             [
-                                item => item.player.rating,
                                 item => item.squadChemistry,
-                                item => item.playerChemistry
+                                item => item.playerChemistry,
+                                item => item.player.rating
                             ],
-                            ['asc', 'desc', 'desc']
+                            ['desc', 'desc', 'asc']
                         ));
                         console.log(`${PlayerPosition[indexPos]}第一候选者`, firstCandidate);
                         tempSquad[index] = firstCandidate.player;
@@ -12221,22 +12189,6 @@
         //24.23 添加拦截器来截获提交的SBC
         const originalSubmitChallenge = UTSBCService.prototype.submitChallenge;
         UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
-            //提交前捕获阵容评分（用于缓存上次提交记录）
-            let _cachedRatings = null, _cachedChallengeId = null;
-            try {
-                if (o && o.squad && o.id) {
-                    const players = o.squad.getFieldPlayers();
-                    const ratings = players
-                        .filter(p => p._item && typeof p._item.rating === 'number')
-                        .map(p => p._item.rating)
-                        .sort((a, b) => b - a);
-                    if (ratings.length === 11) {
-                        _cachedRatings = ratings.join(",");
-                        _cachedChallengeId = o.id;
-                    }
-                }
-            } catch(e) {}
-
             let r = originalSubmitChallenge.apply(this, arguments);
             let s = this;
             r.observe(this, function(e,t) {
@@ -12272,15 +12224,6 @@
                         ts: Date.now()
                     });
                     GM_setValue("SBCDailyLog", JSON.stringify(dailyLog));
-                    //26.09 缓存本次提交评分，供阵容补全默认填充
-                    if (_cachedRatings && _cachedChallengeId && t.data && t.data.setId) {
-                        try {
-                            const key = `${t.data.setId}#${_cachedChallengeId}`;
-                            let cache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
-                            cache[key] = _cachedRatings;
-                            GM_setValue("SBCLastRatings", JSON.stringify(cache));
-                        } catch(e) {}
-                    }
                 }
             });
             return r;
@@ -15043,25 +14986,10 @@
                             console.log(thisController._challenge)
                             let va = thisController._squad.getNumOfRequiredPlayers() - thisController._squad.getFieldPlayers().filter(i => i.isValid()).length,
                             fillRating = events.needRatingsCount(hasRating, thisController._squad),
-                            inputText;
+                            inputText = fy(va ? "squadcmpl.placeholder" : "squadcmpl.placeholder_zero");
 
-                            //优先使用上次提交的评分缓存
-                            try {
-                                const setId = thisController._set?.id;
-                                const challengeId = thisController._challenge?.id;
-                                if (setId && challengeId) {
-                                    const allCache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
-                                    const lastStr = allCache[`${setId}#${challengeId}`];
-                                    if (lastStr) inputText = [fy("squadcmpl.placeholder"), lastStr];
-                                }
-                            } catch(e) {}
-
-                            if (!inputText) {
-                                if(fillRating.length && fillRating[0].lackRatings.length == 0 && fillRating[0].ratings.length && hasRating){
-                                    inputText = [fy("squadcmpl.placeholder"),fillRating.length == "0" && va == 0 ? "" : fillRating[0].ratings.join(`,`)];
-                                }else{
-                                    inputText = fy(va ? "squadcmpl.placeholder" : "squadcmpl.placeholder_zero");
-                                }
+                            if(fillRating.length && fillRating[0].lackRatings.length == 0 && fillRating[0].ratings.length && hasRating){
+                                inputText = [fy("squadcmpl.placeholder"),fillRating.length == "0" && va == 0 ? "" : fillRating[0].ratings.join(`,`)];
                             }
 
                             if(exactRating){
