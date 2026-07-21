@@ -11714,6 +11714,10 @@
                     if (e.unobserve(s),
                     s.clubViewModel && t.success && JSUtils.isObject(t.response)) {
                         //console.log(t)
+                    //SBC仓库默认按评分升序（低分在前）
+                    if (t.response.items && t.response.items.length) {
+                        t.response.items = _.orderBy(t.response.items, ['rating'], ['asc']);
+                    }
                     var o = s.clubViewModel.getIndex()
                         , n = s.searchCriteria.sortBy === SearchSortType.RECENCY;
                     s.clubViewModel.sortByRecency = n,
