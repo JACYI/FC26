@@ -356,6 +356,25 @@ node --check fc26_fsu_mod/【FSU】EAFC FUT WEB 增强器-26.09.yyh.js
 
 **不遵守此规则的后果**：这次花了大几个小时追一个 `}` 不匹配，就是因为修改后没有即时验证，累积了4个区域的问题导致错误位置漂移，排查极为困难。
 
+### 提交前验证流程
+
+仓库配置了 **pre-commit hook**（`.git/hooks/pre-commit`），在 `git commit` 前自动执行：
+
+| 步骤 | 动作 | 失败处理 |
+|------|------|---------|
+| 1 | `node --check` 语法检查 | 阻止提交 |
+| 2 | `node test_submit_cache.js` 单元测试（如有变更） | 阻止提交 |
+
+**手动运行验证：**
+```bash
+bash fc26_fsu_mod/pre-check.sh
+```
+
+**单元测试文件：** `fc26_fsu_mod/test_submit_cache.js`
+- 使用 Node.js `assert`，不依赖第三方框架
+- 运行：`node fc26_fsu_mod/test_submit_cache.js`
+- 新增功能必须补充对应测试用例
+
 ## Reference Websites
 
 - https://www.futbin.com/ — Player prices, SBC solutions, market data
