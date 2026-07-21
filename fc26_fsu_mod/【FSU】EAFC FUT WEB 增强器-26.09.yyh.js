@@ -8654,6 +8654,12 @@
                     _cacheByDefId.set(_cp.definitionId, _cp);
                 }
             }
+            //判断SBC是否有化学要求 — 有化学要求需反复试化学最佳匹配，无化学要求直接取第一个可用球员
+            const _hasChemReq = e.challenge && e.challenge.eligibilityRequirements &&
+                e.challenge.eligibilityRequirements.some(req =>
+                    req.getFirstKey() === SBCEligibilityKey.CHEMISTRY_POINTS ||
+                    req.getFirstKey() === SBCEligibilityKey.ALL_PLAYERS_CHEMISTRY_POINTS
+                );
             // 如果路径不存在则创建，并返回该对象
             const fsu = _.get(e, 'challenge.squad._fsu') || _.set(e, 'challenge.squad._fsu', {});
             
@@ -8819,33 +8825,47 @@
                         ], ['desc', 'asc', 'desc', 'desc', 'desc'])
                         .value();
 
-                    let satisfyPlayers = [];
-                    for (let fillPlayer of searchResultsList) {
-                        copySquad[index] = fillPlayer;
-                        newChallenge.squad.setPlayers(copySquad);
+                    if (_hasChemReq) {
+                        //有化学要求 → 遍历所有候选找到化学最佳匹配
+                        let satisfyPlayers = [];
+                        for (let fillPlayer of searchResultsList) {
+                            copySquad[index] = fillPlayer;
+                            newChallenge.squad.setPlayers(copySquad);
 
-                        if (newChallenge.meetsRequirements()) {
-                            satisfyPlayers.push({
-                                player: fillPlayer,
-                                playerChemistry: newChallenge.squad.getPlayer(index)._chemistry,
-                                squadChemistry: newChallenge.squad._chemistry,
-                                rating: fillPlayer.rating
-                            });
+                            if (newChallenge.meetsRequirements()) {
+                                satisfyPlayers.push({
+                                    player: fillPlayer,
+                                    playerChemistry: newChallenge.squad.getPlayer(index)._chemistry,
+                                    squadChemistry: newChallenge.squad._chemistry,
+                                    rating: fillPlayer.rating
+                                });
+                            }
                         }
-                    }
 
-                    if (satisfyPlayers.length) {
-                        const firstCandidate = _.first(_.orderBy(
-                            satisfyPlayers,
-                            [
-                                item => item.squadChemistry,
-                                item => item.playerChemistry,
-                                item => item.player.rating
-                            ],
-                            ['desc', 'desc', 'asc']
-                        ));
-                        console.log(`${PlayerPosition[indexPos]}第一候选者`, firstCandidate);
-                        tempSquad[index] = firstCandidate.player;
+                        if (satisfyPlayers.length) {
+                            const firstCandidate = _.first(_.orderBy(
+                                satisfyPlayers,
+                                [
+                                    item => item.squadChemistry,
+                                    item => item.playerChemistry,
+                                    item => item.player.rating
+                                ],
+                                ['desc', 'desc', 'asc']
+                            ));
+                            console.log(`${PlayerPosition[indexPos]}第一候选者`, firstCandidate);
+                            tempSquad[index] = firstCandidate.player;
+                        }
+                    } else {
+                        //无化学要求 → 直接取第一个可用的（不用遍历所有试化学）
+                        for (let fillPlayer of searchResultsList) {
+                            copySquad[index] = fillPlayer;
+                            newChallenge.squad.setPlayers(copySquad);
+                            if (newChallenge.meetsRequirements()) {
+                                console.log(`${PlayerPosition[indexPos]}可用球员`, fillPlayer);
+                                tempSquad[index] = fillPlayer;
+                                break;
+                            }
+                        }
                     }
                 }
 
