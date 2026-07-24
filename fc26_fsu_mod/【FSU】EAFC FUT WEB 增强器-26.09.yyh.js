@@ -13609,38 +13609,31 @@
                         }
                     }
 
-                    //26.10 出售重复球员（sellDup模式）→ 先移转会名单初始化，再discard
+                    //26.10 出售重复球员（sellDup模式）
                     if (toSellPlayers.length > 0) {
-                        const moveResult = await new Promise((resolve) => {
-                            services.Item.move(toSellPlayers, ItemPile.TRANSFER).observe(controller, (e, t) => {
+                        const sellResult = await new Promise((resolve) => {
+                            services.Item.discard(toSellPlayers).observe(controller, (e, t) => {
                                 e.unobserve(controller);
                                 resolve(t);
                             });
                         });
-                        if (moveResult.success) {
-                            //从转会仓库取已初始化的物品，再discard
-                            const transferItems = toSellPlayers.map(item =>
-                                repositories.Item.transfer.get(item.id)
-                            ).filter(Boolean);
-                            if (transferItems.length > 0) {
-                                const sellResult = await new Promise((resolve) => {
-                                    services.Item.discard(transferItems).observe(controller, (e, t) => {
-                                        e.unobserve(controller);
-                                        resolve(t);
-                                    });
+                        if (sellResult.success) {
+                            assignPlayer.push(...toSellPlayers.map(item => {
+                                const copy = _.cloneDeep(item);
+                                copy.storeLoc = 3;
+                                copy.packCount = index + 1;
+                                return copy;
+                            }));
+                        } else {
+                            console.warn(`quick sell失败:`, sellResult);
+                            //discard失败 → fallback到转会名单
+                            const fbResult = await new Promise((resolve) => {
+                                services.Item.move(toSellPlayers, ItemPile.TRANSFER).observe(controller, (e, t) => {
+                                    e.unobserve(controller);
+                                    resolve(t);
                                 });
-                                if (sellResult.success) {
-                                    assignPlayer.push(...toSellPlayers.map(item => {
-                                        const copy = _.cloneDeep(item);
-                                        copy.storeLoc = 3;
-                                        copy.packCount = index + 1;
-                                        return copy;
-                                    }));
-                                } else {
-                                    console.warn(`quick sell失败:`, sellResult);
-                                }
-                            } else {
-                                console.warn(`转会名单未找到物品，fallback到转会名单保留`);
+                            });
+                            if (fbResult.success) {
                                 assignPlayer.push(...toSellPlayers.map(item => {
                                     const copy = _.cloneDeep(item);
                                     copy.storeLoc = 3;
@@ -13648,11 +13641,6 @@
                                     return copy;
                                 }));
                             }
-                        } else {
-                            console.warn(`发送转会名单失败:`, moveResult);
-                            toUnassigned(true);
-                            errorOccurred = true;
-                            break;
                         }
                     }
 
