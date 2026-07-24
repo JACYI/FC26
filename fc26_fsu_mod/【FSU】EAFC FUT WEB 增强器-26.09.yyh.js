@@ -7209,8 +7209,7 @@
                 });
             }
         };
-        events.reloadPlayers = async(retryCount) =>{
-            if (typeof retryCount !== 'number') retryCount = 0;
+        events.reloadPlayers = async() =>{
             GM_setValue("players",JSON.stringify({}));
             let current = getAppMain().getRootViewController();
             await services.Club.getStats().observe(current,async function _onGetStats(e, t) {
@@ -7219,9 +7218,10 @@
                     if(e.type == 'players'){
                         if(e.count !== services.Club.clubDao.clubRepo.items.length){
                             events.showLoader();
-                            let playersCount = isPhone() ? 200 : 200;
+                            let playersCount = 200;
                             let playersPage = Math.ceil(e.count / playersCount);
-                            let playerList = [];
+                            let hasError = false;
+                            let slowMode = false;
                             for (let i = 0; i < playersPage; i++) {
                                 let playersCriteria = new UTSearchCriteriaDTO();
                                 playersCriteria.type = "player";
@@ -7230,37 +7230,54 @@
                                 playersCriteria.count = playersCount;
                                 playersCriteria.offset = i * playersCount;
                                 events.changeLoadingText(["loadingclose.ldata",`${i + 1}`,`${playersPage}`]);
-                                try {
-                                    playerList = await new Promise((resolve, reject) => {
-                                        services.Club.search(playersCriteria).observe(e, (p, t) => {
-                                            if (p.unobserve(p), t.success && JSUtils.isObject(t.response)) {
-                                                resolve(t.response);
-                                            } else {
-                                                reject(new Error("Search operation failed"));
-                                            }
+                                let pageSuccess = false;
+                                for (let retry = 0; retry <= 3; retry++) {
+                                    try {
+                                        await new Promise((resolve, reject) => {
+                                            services.Club.search(playersCriteria).observe(e, (p, res) => {
+                                                if (p.unobserve(p), res.success && JSUtils.isObject(res.response)) {
+                                                    resolve(res.response);
+                                                } else {
+                                                    reject({status: res.status, message: "Search operation failed"});
+                                                }
+                                            });
                                         });
-                                    });
-                                    await events.wait(0.1,0.25)
-                                } catch (error) {
-                                    console.error("Search error:", error);
-                                    services.Notification.queue([services.Localization.localize("notification.club.failedToLoad"), UINotificationType.NEGATIVE]);
-                                    const navController = e.getNavigationController();
-                                    if (navController) {
-                                        navController.popViewController(true);
+                                        pageSuccess = true;
+                                        break;
+                                    } catch (error) {
+                                        let statusCode = error && error.status;
+                                        if (retry < 3 && (statusCode === 403 || statusCode === 429 || !statusCode)) {
+                                            let delay = [1, 2, 4][retry] || 4;
+                                            console.warn(`Player page ${i + 1}/${playersPage} failed (status:${statusCode}), retry ${retry + 1}/3 after ${delay}s`);
+                                            slowMode = true;
+                                            await events.wait(delay, delay + 0.5);
+                                        } else {
+                                            console.error(`Player page ${i + 1}/${playersPage} failed after ${retry} retries:`, error);
+                                            hasError = true;
+                                        }
                                     }
+                                }
+                                if (pageSuccess) {
+                                    await events.wait(slowMode ? 0.3 : 0.1, slowMode ? 0.6 : 0.25);
                                 }
                             }
 
-                            await services.Item.searchStorageItems(new UTSearchCriteriaDTO()).observe(current, function(e, t) {
-                                e.unobserve(current);
-                                if(t.success && t.response && !JSUtils.isString(t.response)){
-                                    //console.log(t.response.items)
-                                }
-                            });
-                            events.hideLoader();
-                            info.base.state = true;
-                            events._reloadRetry = 0;
-                            events.notice("notice.ldatasuccess",0);
+                            if (!hasError) {
+                                await services.Item.searchStorageItems(new UTSearchCriteriaDTO()).observe(current, function(e, t) {
+                                    e.unobserve(current);
+                                    if(t.success && t.response && !JSUtils.isString(t.response)){
+                                        //console.log(t.response.items)
+                                    }
+                                });
+                                events.hideLoader();
+                                info.base.state = true;
+                                events.notice("notice.ldatasuccess",0);
+                            } else {
+                                events.hideLoader();
+                                info.base.state = false;
+                                services.Notification.queue([services.Localization.localize("notification.club.failedToLoad"), UINotificationType.NEGATIVE]);
+                                events.notice("notice.ldataerror",2);
+                            }
                         }
                     }
                 }) : NetworkErrorManager.checkCriticalStatus(response.status) && NetworkErrorManager.handleStatus(response.status) && events.hideLoader() && events.notice("notice.ldataerror",2);
