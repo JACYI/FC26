@@ -1580,6 +1580,9 @@
             "openpack.result.popupm2":["上方将展示最多20位球员，优先展示特别品质和高评分的球员，其余球员球员将不会展示，请去俱乐部或SBC仓库自行查看。","上方將展示最多 20 位球員，優先展示具備特殊品質與高評分的球員，其餘球員將不予顯示，請前往俱樂部或 SBC 倉庫自行查看。","Up to 20 players will be displayed above, prioritizing special quality and high-rated players. Other players will not be shown — please check your Club or SBC storage for the rest."],
             "openpack.storebtn.text":["批量打开","批量開啟","Bulk Open"],
             "openpack.storebtn.subtext":["自动分配球员","自動分配球員","Auto Assign Players"],
+            "openpack.selldupbtn.text":["一键开包（出售重复）","一鍵開包（出售重複）","Bulk Open (Sell Dupes)"],
+            "openpack.selldupbtn.subtext":["自动出售重复球员","自動出售重複球員","Auto Sell Duplicates"],
+            "openpack.result.popupm_sell":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售重复 %5 个（获得 %6 金币），%7 个特别球员，最高评分 %8 。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售重複 %5 個（獲得 %6 金幣），%7 名特別球員，最高評分為 %8。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 duplicates (earned %6 coins), %7 special players, highest rating %8."],
             "openpack.storebtn.popupt":["批量打开提示 - %1","批量開啟提示 - %1","Bulk Open Notice - %1"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
@@ -9677,6 +9680,21 @@
                                 bulkOpenBtn.__currencyLabel.textContent = fy("openpack.storebtn.subtext")
                                 item.__articleActionContainer.prepend(bulkOpenBtn.getRootElement())
                                 item.__articleActionContainer.style.gap = "1rem";
+
+                                //26.10 一键开包（出售重复）按钮 — 仅可交易包显示
+                                if (packInfo.tradable && !itemElement.querySelector(".fsu-selldup")) {
+                                    let sellDupBtn = events.createButton(
+                                        new UTCurrencyButtonControl(),
+                                        fy("openpack.selldupbtn.text") + ` (${packInfo.count})`,
+                                        (e) => {
+                                            events.showLoader();
+                                            events.openPacks(item.articleId, packInfo.fullName, packInfo.count, true);
+                                        },
+                                        "fsu-selldup call-to-action"
+                                    )
+                                    sellDupBtn.__currencyLabel.textContent = fy("openpack.selldupbtn.subtext")
+                                    item.__articleActionContainer.append(sellDupBtn.getRootElement())
+                                }
                             }
                         }
                     }
@@ -13323,7 +13341,8 @@
         }
         
         //** 25.21 批量开包：开启球员包 */
-        events.openPacks = async (packId, packName, packNum) => {
+        //26.10 增加 sellDup 模式：可交易重复球员自动出售
+        events.openPacks = async (packId, packName, packNum, sellDup) => {
             const controller = cntlr.current();
             repositories.Item.unassigned.reset();
             const unassignedItems = await new Promise((resolve) => {
@@ -13397,13 +13416,17 @@
                 if (assignPlayer.length) {
                     repositories.Store.setDirty();
                     console.log(assignPlayer);
-                    
+
                     const result = _.reduce(assignPlayer, (acc, e) => {
                         if (e.storeLoc === 1) acc.clubCount++;
                         else if (e.storeLoc === 2) acc.storageCount++;
+                        else if (e.storeLoc === 3) {
+                            acc.sellCount++;
+                            acc.sellCoins += e.discardValue || 0;
+                        }
 
                         if (e.isSpecial()) acc.specialCount++;
-                    
+
                         const rating = e.rating;
                         if (rating > acc.playerMaxRating) {
                             acc.playerMaxRating = rating;
@@ -13415,16 +13438,24 @@
                     }, {
                         clubCount: 0,
                         storageCount: 0,
+                        sellCount: 0,
+                        sellCoins: 0,
                         specialCount: 0,
                         packCount: 0,
                         playerMaxRating: 0
                     });
-                    
-                    const { clubCount, storageCount, specialCount, packCount, playerMaxRating } = result;
+
+                    const { clubCount, storageCount, sellCount, sellCoins, specialCount, packCount, playerMaxRating } = result;
                     const showPlayers = _.orderBy(assignPlayer, ["rareflag", "rating"], ["desc", "desc"]).slice(0, 20);
-                    const popupText = fy(["openpack.result.popupm1", packCount, packNum - packCount, clubCount, storageCount, specialCount, playerMaxRating]);
                     const popupTitle = fy(["openpack.result.popupt", packName]);
-                    events.openPacksResultPopup(popupTitle, popupText, showPlayers, fy("openpack.result.popupm2"));
+                    const popupDesc = fy("openpack.result.popupm2");
+                    let popupText;
+                    if (sellDup && sellCount > 0) {
+                        popupText = fy(["openpack.result.popupm_sell", packCount, packNum - packCount, clubCount, storageCount, sellCount, sellCoins.toLocaleString(), specialCount, playerMaxRating]);
+                    } else {
+                        popupText = fy(["openpack.result.popupm1", packCount, packNum - packCount, clubCount, storageCount, specialCount, playerMaxRating]);
+                    }
+                    events.openPacksResultPopup(popupTitle, popupText, showPlayers, popupDesc);
                 }
             };
         
@@ -13469,6 +13500,7 @@
                     const toClubPlayers = [];
                     const toStoragePlayers = [];
                     const packDupToStorage = [];
+                    const toSellPlayers = [];
                     //26.02 修改存储仓库的评分为当前仓库最低值
                     const minStorageRating = _.min(_.map(repositories.Item.storage.values(), 'rating'));
 
@@ -13476,7 +13508,11 @@
                         const inClub = events.getItemBy(2, { definitionId: item.definitionId , upgrades:null}, false, repositories.Item.club.items.values());
 
                         if (inClub.length) {
-                            if (item.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length + packDupToStorage.length < 100) {
+                            //26.10 sellDup模式：可交易重复球员直接出售
+                            if (sellDup && !item.untradeableCount) {
+                                item.duplicateId = _.find(inClub).id;
+                                toSellPlayers.push(item);
+                            } else if (item.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length + packDupToStorage.length < 100) {
                                 item.duplicateId = _.find(inClub).id;
                                 item.pile = ItemPile.PURCHASED;
                                 item.injuryType = PlayerInjury.NONE;
@@ -13512,7 +13548,10 @@
                                 repositories.Item.club.items.reset();
                                 for (const dupItem of packDupToStorage) {
                                     const inClubNow = events.getItemBy(2, { definitionId: dupItem.definitionId , upgrades:null}, false, repositories.Item.club.items.values());
-                                    if (inClubNow.length && dupItem.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length < 100) {
+                                    //26.10 sellDup模式：包内可交易重复直接出售
+                                    if (sellDup && inClubNow.length && !dupItem.untradeableCount) {
+                                        toSellPlayers.push(dupItem);
+                                    } else if (inClubNow.length && dupItem.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length < 100) {
                                         dupItem.duplicateId = _.find(inClubNow).id;
                                         dupItem.pile = ItemPile.PURCHASED;
                                         dupItem.injuryType = PlayerInjury.NONE;
@@ -13548,7 +13587,37 @@
                         }
                     }
 
-                    if (toClubPlayers.length + toStoragePlayers.length + packDupToStorage.length !== openResult.response.items.length) {
+                    //26.10 出售重复球员（sellDup模式）
+                    if (toSellPlayers.length > 0) {
+                        let sellSuccess = true;
+                        for (const sellItem of toSellPlayers) {
+                            const sellResult = await new Promise((resolve) => {
+                                services.Item.discard([sellItem]).observe(controller, (e, t) => {
+                                    e.unobserve(controller);
+                                    resolve(t);
+                                });
+                            });
+                            if (sellResult.success) {
+                                const discardVal = sellItem.discardValue || 0;
+                                totalSellCoins += discardVal;
+                                soldCount++;
+                                const copy = _.cloneDeep(sellItem);
+                                copy.storeLoc = 3;
+                                copy.packCount = index + 1;
+                                assignPlayer.push(copy);
+                            } else {
+                                console.warn(`出售失败: ${sellItem.definitionId}`, sellResult);
+                                sellSuccess = false;
+                            }
+                        }
+                        if (!sellSuccess) {
+                            toUnassigned(true);
+                            errorOccurred = true;
+                            break;
+                        }
+                    }
+
+                    if (toClubPlayers.length + toStoragePlayers.length + packDupToStorage.length + toSellPlayers.length !== openResult.response.items.length) {
                         toUnassigned(true);
                         errorOccurred = true;
                         break;
