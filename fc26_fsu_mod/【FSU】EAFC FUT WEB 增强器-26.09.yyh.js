@@ -9678,8 +9678,6 @@
                                     "fsu-bulkopen call-to-action"
                                 )
                                 bulkOpenBtn.__currencyLabel.textContent = fy("openpack.storebtn.subtext")
-                                item.__articleActionContainer.prepend(bulkOpenBtn.getRootElement())
-                                item.__articleActionContainer.style.gap = "1rem";
 
                                 //26.10 一键开包（出售重复）按钮 — 仅可交易包显示
                                 if (packInfo.tradable && !itemElement.querySelector(".fsu-selldup")) {
@@ -9693,7 +9691,29 @@
                                         "fsu-selldup call-to-action"
                                     )
                                     sellDupBtn.__currencyLabel.textContent = fy("openpack.selldupbtn.subtext")
-                                    item.__articleActionContainer.append(sellDupBtn.getRootElement())
+                                    //布局：出售重复(左1/4) | 批量打开(中1/4) | 打开扩展包(右1/2)
+                                    item.__articleActionContainer.prepend(sellDupBtn.getRootElement())
+                                    sellDupBtn.getRootElement().after(bulkOpenBtn.getRootElement())
+                                } else {
+                                    //无可交易包 / 不可交易包 → 批量打开放在最左
+                                    item.__articleActionContainer.prepend(bulkOpenBtn.getRootElement())
+                                }
+                                item.__articleActionContainer.style.display = "flex";
+                                item.__articleActionContainer.style.gap = "0.5rem";
+                                item.__articleActionContainer.style.flexWrap = "nowrap";
+                                //设置宽度比例：新按钮flex=1(1/4)，批量打开flex=1(1/4)，原按钮flex=2(1/2)
+                                itemElement.querySelectorAll(".fsu-selldup, .fsu-bulkopen").forEach(el => {
+                                    el.style.flex = "1";
+                                    el.style.minWidth = "0";
+                                });
+                                //原"打开扩展包"按钮占右1/2
+                                const container = item.__articleActionContainer;
+                                for (let i = 0; i < container.children.length; i++) {
+                                    const child = container.children[i];
+                                    if (!child.classList.contains("fsu-selldup") && !child.classList.contains("fsu-bulkopen")) {
+                                        child.style.flex = "2";
+                                        child.style.minWidth = "0";
+                                    }
                                 }
                             }
                         }
