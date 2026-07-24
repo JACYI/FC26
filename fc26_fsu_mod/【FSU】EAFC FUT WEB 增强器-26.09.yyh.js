@@ -9695,8 +9695,10 @@
                                     item.__articleActionContainer.prepend(sellDupBtn.getRootElement())
                                     sellDupBtn.getRootElement().after(bulkOpenBtn.getRootElement())
                                 } else {
-                                    //无可交易包 / 不可交易包 → 批量打开放在最左
+                                    //不可交易包 → 批量打开(左1/2) | 打开扩展包(右1/2)
                                     item.__articleActionContainer.prepend(bulkOpenBtn.getRootElement())
+                                    bulkOpenBtn.getRootElement().style.flex = "1";
+                                    bulkOpenBtn.getRootElement().style.minWidth = "0";
                                 }
                                 item.__articleActionContainer.style.display = "flex";
                                 item.__articleActionContainer.style.gap = "0.5rem";
