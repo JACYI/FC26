@@ -15187,15 +15187,18 @@
                             fillRating = events.needRatingsCount(hasRating, thisController._squad),
                             inputText;
 
-                            //优先使用上次提交的评分缓存
+                            //仅当阵容完全为空（va===11）时使用上次提交的评分缓存
+                            //一旦已有球员填充，缓存评分无意义，必须重新计算
                             try {
-                                const setId = thisController._set?.id;
-                                const challengeId = thisController._challenge?.id;
-                                if (setId && challengeId) {
-                                    const allCache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
-                                    const lastEntry = allCache[`${setId}#${challengeId}`];
-                                    if (lastEntry) {
-                                        inputText = [fy("squadcmpl.placeholder"), lastEntry.v || lastEntry];
+                                if (va === 11) {
+                                    const setId = thisController._set?.id;
+                                    const challengeId = thisController._challenge?.id;
+                                    if (setId && challengeId) {
+                                        const allCache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
+                                        const lastEntry = allCache[`${setId}#${challengeId}`];
+                                        if (lastEntry) {
+                                            inputText = [fy("squadcmpl.placeholder"), lastEntry.v || lastEntry];
+                                        }
                                     }
                                 }
                             } catch(e) {}
