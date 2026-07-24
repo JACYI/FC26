@@ -1250,7 +1250,7 @@
             "set.info.sbcf":["SBC筛选","SBC篩選","SBC Filters"],
             "set.info.sbcs":["SBC子任务","SBC子任務","SBC Subtasks"],
             "set.info.pack":["球员包可开球员","球員包可開球員","Pack PROMO"],
-            "set.info.discardbs":["丢弃铜卡银卡非特殊","丟棄銅卡銀卡非特殊","Discard Bronze/Silver (non-special)"],
+            "set.info.discardbs":["批量开包自动出售不可交易的白银、青铜球员","批量開包自動出售不可交易的白銀、青銅球員","Auto-sell untradeable Bronze/Silver in bulk packs"],
             "set.info.squad":["阵容价值","陣容價值","Squad Value"],
             "set.style.title":["球员卡信息样式","球員卡資訊樣式","Player Card Information Style"],
             "set.style.new":["随品质变化","隨品質變化","Varies with Quality"],
