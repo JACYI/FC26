@@ -3788,14 +3788,24 @@
                         quickRightList.append(rightRatingBtn.getRootElement());
                     }
 
-                    //黑卡按钮（TOTW:3 + TOTS:11 + FOF:18/20/28/62/63 筛选）
+                    //黑卡按钮 — rareflag筛选，匹配SBC"至少1名球员"要求中的23种卡类型
+                    // 3=TOTW  11=TOTS  18=Star Performer  20=Answer the Call
+                    // 28=Captains  62=Showdown  63=Showdown Upgrade
+                    // 65=TOTS Honourable Mentions  95=Summer Stars Red
+                    // 98=National Pride  103=National Pride Red
+                    // 104=Glory Hunters Red  106=Phenoms Red
+                    // 107=Path to Glory  109=Glory Hunters
+                    // 116=Captains ICON  120=TOTS Breakthrough
+                    // 122=ICON  127=TOTS Champions
+                    // 130=Greats of the Game Hero  131=Greats of the Game ICON
+                    // 137=Phenoms  138=Summer Stars
                     let blackBtn = events.createButton(
                         new UTButtonControl(),
                         fy("fastsbc.black"),
                         () => {
                             events.squadPositionSelection(
                                 thisController,
-                                {rareflag: [3, 11, 18, 20, 28, 62, 63]},
+                                {rareflag: [3, 11, 18, 20, 28, 62, 63, 65, 95, 98, 103, 104, 106, 107, 109, 116, 120, 122, 127, 130, 131, 137, 138]},
                                 null
                             )
                         },
