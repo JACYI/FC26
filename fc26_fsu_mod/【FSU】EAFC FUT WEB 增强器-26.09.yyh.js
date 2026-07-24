@@ -76,7 +76,7 @@
             "range":[46,99],
             "build":{"league":true,"flag":false,"untradeable":true,"ignorepos":true,"academy":false,"strictlypcik":true,"comprare":true,"comprange":true,"firststorage":true,"sbfirstcommon":true},
             "league":{2012:'中超',61:'英乙',60:'英甲',14:'英冠',13:'英超',2208:'英丙',2149:'印超',32:'意乙',31:'意甲',54:'西乙',53:'西甲',68:'土超',50:'苏超',308:'葡超',39:'美职联',17:'法乙',16:'法甲',20:'德乙',19:'德甲',2076:'德丙',2118:'传奇',353:'阿甲'},
-            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain"]},
+            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain","discardbs"]},
             "set":{},
             "lock":[],
             "autobuy":{"controller":null,"infoViews":{},"logView":{},"log":[]},
@@ -1250,6 +1250,7 @@
             "set.info.sbcf":["SBC筛选","SBC篩選","SBC Filters"],
             "set.info.sbcs":["SBC子任务","SBC子任務","SBC Subtasks"],
             "set.info.pack":["球员包可开球员","球員包可開球員","Pack PROMO"],
+            "set.info.discardbs":["丢弃铜卡银卡非特殊","丟棄銅卡銀卡非特殊","Discard Bronze/Silver (non-special)"],
             "set.info.squad":["阵容价值","陣容價值","Squad Value"],
             "set.style.title":["球员卡信息样式","球員卡資訊樣式","Player Card Information Style"],
             "set.style.new":["随品质变化","隨品質變化","Varies with Quality"],
@@ -13534,6 +13535,11 @@
                             if (sellDup && !item.untradeableCount) {
                                 item.duplicateId = _.find(inClub).id;
                                 toSellPlayers.push(item);
+                            //26.11 丢弃铜卡银卡非特殊（不可交易）
+                            } else if (info.set.info_discardbs && item.untradeableCount &&
+                                       !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating())) {
+                                item.duplicateId = _.find(inClub).id;
+                                toSellPlayers.push(item);
                             } else if (item.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length + packDupToStorage.length < 100) {
                                 item.duplicateId = _.find(inClub).id;
                                 item.pile = ItemPile.PURCHASED;
@@ -13544,9 +13550,21 @@
                             //包内重复检测：同一 definitionId 已在待发往俱乐部的列表中
                             const alreadyInBatch = _.some(toClubPlayers, { definitionId: item.definitionId });
                             if (alreadyInBatch) {
-                                packDupToStorage.push(item);
+                                //26.11 包内重复也走丢弃铜卡银卡判断
+                                if (info.set.info_discardbs && item.untradeableCount &&
+                                    !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating())) {
+                                    toSellPlayers.push(item);
+                                } else {
+                                    packDupToStorage.push(item);
+                                }
                             } else {
-                                toClubPlayers.push(item);
+                                //26.11 首次获得也丢弃铜卡银卡非特殊
+                                if (info.set.info_discardbs && item.untradeableCount &&
+                                    !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating())) {
+                                    toSellPlayers.push(item);
+                                } else {
+                                    toClubPlayers.push(item);
+                                }
                             }
                         }
                     }
@@ -13572,6 +13590,10 @@
                                     const inClubNow = events.getItemBy(2, { definitionId: dupItem.definitionId , upgrades:null}, false, repositories.Item.club.items.values());
                                     //26.10 sellDup模式：包内可交易重复直接出售
                                     if (sellDup && inClubNow.length && !dupItem.untradeableCount) {
+                                        toSellPlayers.push(dupItem);
+                                    //26.11 丢弃铜卡银卡非特殊（不可交易）
+                                    } else if (info.set.info_discardbs && inClubNow.length && dupItem.untradeableCount &&
+                                               !dupItem.isSpecial() && (dupItem.isBronzeRating() || dupItem.isSilverRating())) {
                                         toSellPlayers.push(dupItem);
                                     } else if (inClubNow.length && dupItem.rating >= minStorageRating && repositories.Item.numItemsInCache(ItemPile.STORAGE) + toStoragePlayers.length < 100) {
                                         dupItem.duplicateId = _.find(inClubNow).id;
