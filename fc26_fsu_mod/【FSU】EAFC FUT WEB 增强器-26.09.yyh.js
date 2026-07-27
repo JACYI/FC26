@@ -8663,7 +8663,6 @@
                     }
                 }
             })
-            events.loadPlayerInfo(playerlist)
             events.saveSquad(challenge,challenge.squad,playerlist,[]);
             //events.hideLoader();
             events.saveOldSquad(challenge.squad,false);
@@ -8920,6 +8919,11 @@
             info.base.savesquad = true;
             s.removeAllItems();
             s.setPlayers(l, true);
+            //26.09-mod-07 球员已本地设置完毕即隐藏加载，不等待EA服务器两次串行API响应
+            events.hideLoader();
+            //代际计数器：再次调用 saveSquad(c) 会递增，旧回调全部跳过
+            c._fsuSaveGen = (c._fsuSaveGen || 0) + 1;
+            const thisGen = c._fsuSaveGen;
             await services.SBC.saveChallenge(c).observe(
                 this,
                 async function (z, d) {
@@ -8927,12 +8931,12 @@
                         events.notice("notice.templateerror",2);
                         s.removeAllItems();
                         info.base.savesquad = false;
-                        events.hideLoader();
+                        return;
                     }
                     services.SBC.loadChallengeData(c).observe(
                         this,
                         async function (z, {response:{squad}}) {
-                            events.hideLoader();
+                            if (c._fsuSaveGen !== thisGen) return;
                             let ps = squad._players.map((p) => p._item);
                             c.squad.setPlayers(ps, true);
                             c.onDataChange.notify({squad});

@@ -5,6 +5,7 @@
 
 FSU_JS="fc26_fsu_mod/【FSU】EAFC FUT WEB 增强器-26.09.yyh.js"
 TEST_JS="fc26_fsu_mod/test_submit_cache.js"
+TEST_GEN_JS="fc26_fsu_mod/test_save_gen.js"
 
 echo "🔍 FSU 提交前验证"
 echo "=================="
@@ -22,8 +23,18 @@ fi
 # 单元测试
 if [ -f "$TEST_JS" ]; then
     echo ""
-    echo "🧪 单元测试..."
+    echo "🧪 单元测试（提交评分缓存）..."
     if node "$TEST_JS"; then
+        echo "   ✓ 测试通过"
+    else
+        echo "   ❌ 测试失败！"
+        exit 1
+    fi
+fi
+if [ -f "$TEST_GEN_JS" ]; then
+    echo ""
+    echo "🧪 单元测试（代际计数器）..."
+    if node "$TEST_GEN_JS"; then
         echo "   ✓ 测试通过"
     else
         echo "   ❌ 测试失败！"
