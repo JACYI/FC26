@@ -10480,6 +10480,11 @@
                 SBCSetEntity = services.SBC.repository.getSetById(id),
                 challenge;
             events.showLoader();
+            //正在执行一键三连(X/3) 首轮即显示进度
+            if (info.run._fastBatchInfo && !info.run._fastBatchInfo._progressShown) {
+                info.run._fastBatchInfo._progressShown = true;
+                events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current + 1, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
+            }
             view.setInteractionState(!1);
             services.SBC.requestChallengesForSet(SBCSetEntity).observe(controller, (e, t) => {
                 if (e.unobserve(controller),t.success && 0 < t.data.challenges.length){
@@ -10626,7 +10631,7 @@
                 info.run._fastBatchInfo.current++;
                 if (info.run._fastBatchInfo.current < info.run._fastBatchInfo.total) {
                     events.showLoader();
-                    events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
+                    events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current + 1, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
                     //点击屏幕中断批量：用户点击加载文字即取消剩余次数
                     const _fsuCancelBatch = () => {
                         const _shield = document.querySelector(".ut-click-shield");
