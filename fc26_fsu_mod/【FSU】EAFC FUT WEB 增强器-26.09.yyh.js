@@ -1488,6 +1488,7 @@
             "fastsbc.error_4":["提交失败，交换可交易球员失败，请重试。","提交失敗，交換可交易球員失敗，請重試。","Submit failed, exchange of tradable players failed, please try again."],
             "set.card.meta":["球员元评分&排名","球員元評分&排名","Player Meta Rating & Rank"],
             "fastsbc.error_5":["提交失败，大概率是BAN SBC，请过段时间再试。","提交失敗，大概率是BAN SBC，請過段時間再試。","Submit failed, most likely BAN SBC, please try again after a while."],
+            "fastsbc.batch_canceltext":["点击屏幕可中断","點擊螢幕可中斷","Click to cancel"],
             "sbccount.btntext":["SBC计数：%1","SBC計數：%1","SBC count: %1"],
             "sbccount.popupt":["SBC计数说明","SBC計數說明","SBC Counting Instructions"],
             "sbccount.popupm":["此处仅计算插件运行状态下运行设备当日提交的SBC数量，请自行斟酌是否继续提交SBC。<br/>目前传闻是1小时内超过90个即有可能被禁止提交SBC，等待1到24小时解禁，具体规则EA未披露。","此處僅計算外掛執行狀態下執行裝置當日提交的SBC數量，請自行斟酌是否繼續提交SBC。<br/>目前傳聞是1小時內超過90個即有可能被禁止提交SBC，等待1到24小時解禁，具體規則EA未披露。","Here only the number of SBC submitted by the running device on the day when the plug-in is running is calculated. Please decide whether to continue submitting SBC. <br/> At present, it is rumored that more than 90 SBC submissions may be banned within 1 hours, and wait 1 to 24 hours for the ban to be lifted."],
@@ -10624,7 +10625,16 @@
             if (info.run._fastBatchInfo) {
                 info.run._fastBatchInfo.current++;
                 if (info.run._fastBatchInfo.current < info.run._fastBatchInfo.total) {
-                    events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current, info.run._fastBatchInfo.total]);
+                    events.showLoader();
+                    events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
+                    //点击屏幕中断批量：用户点击加载文字即取消剩余次数
+                    const _fsuCancelBatch = () => {
+                        const _shield = document.querySelector(".ut-click-shield");
+                        _shield.removeEventListener("click", _fsuCancelBatch);
+                        delete info.run._fastBatchInfo;
+                        events.hideLoader();
+                    };
+                    document.querySelector(".ut-click-shield").addEventListener("click", _fsuCancelBatch);
                     let challenge = _.first(set.challenges.values());
                     events.isSBCCache(set.id, challenge.id);
                     return;
