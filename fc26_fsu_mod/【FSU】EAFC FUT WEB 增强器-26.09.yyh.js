@@ -8631,7 +8631,10 @@
         
         //指定ID填充SBC
         events.playerListFillSquad = (challenge,list,type) => {
-            events.showLoader();
+            //26.09-mod-07 批量模式的中间轮次跳过 loading 遮罩，让用户可中断
+            if (!info.run._fastBatchInfo || info.run._fastBatchInfo.current === 0) {
+                events.showLoader();
+            }
             let playerlist = [],substitute = Array.from(list);
 
             let squadFormation = repositories.Squad.getFormation(challenge.formation);
