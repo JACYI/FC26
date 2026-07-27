@@ -76,7 +76,7 @@
             "range":[46,99],
             "build":{"league":true,"flag":false,"untradeable":true,"ignorepos":true,"academy":false,"strictlypcik":true,"comprare":true,"comprange":true,"firststorage":true,"sbfirstcommon":true},
             "league":{2012:'中超',61:'英乙',60:'英甲',14:'英冠',13:'英超',2208:'英丙',2149:'印超',32:'意乙',31:'意甲',54:'西乙',53:'西甲',68:'土超',50:'苏超',308:'葡超',39:'美职联',17:'法乙',16:'法甲',20:'德乙',19:'德甲',2076:'德丙',2118:'传奇',353:'阿甲'},
-            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain","discardbs"]},
+            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain","discardbs","mixedpacksell"]},
             "set":{},
             "lock":[],
             "autobuy":{"controller":null,"infoViews":{},"logView":{},"log":[]},
@@ -1251,6 +1251,7 @@
             "set.info.sbcs":["SBC子任务","SBC子任務","SBC Subtasks"],
             "set.info.pack":["球员包可开球员","球員包可開球員","Pack PROMO"],
             "set.info.discardbs":["批量开包自动出售不可交易的白银、青铜球员","批量開包自動出售不可交易的白銀、青銅球員","Auto-sell untradeable Bronze/Silver in bulk packs"],
+	            "set.info.mixedpacksell":["混合包非重复直接出售","混合包非重複直接出售","Sell non-duplicate items in mixed packs"],
             "set.info.squad":["阵容价值","陣容價值","Squad Value"],
             "set.style.title":["球员卡信息样式","球員卡資訊樣式","Player Card Information Style"],
             "set.style.new":["随品质变化","隨品質變化","Varies with Quality"],
@@ -1587,6 +1588,8 @@
             "openpack.result.popupm_sell":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售重复 %5 个（获得 %6 金币），%7 个特别球员，最高评分 %8 。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售重複 %5 個（獲得 %6 金幣），%7 名特別球員，最高評分為 %8。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 duplicates (earned %6 coins), %7 special players, highest rating %8."],
             "openpack.storebtn.popupt":["批量打开提示 - %1","批量開啟提示 - %1","Bulk Open Notice - %1"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
+	            "openpack.mixedbtn.subtext":["重复立即出售","重複立即出售","Duplicates auto-sold"],
+	            "openpack.mixed.result":["共开启 %1 个包（%2个未开启），存入俱乐部 %3 件，出售重复 %4 件（获得 %5 金币），%6 个特别球员。","共開啟 %1 個包（尚有 %2 個未開啟），存入俱樂部 %3 件，出售重複 %4 件（獲得 %5 金幣），%6 名特別球員。","Opened %1 packs (%2 not opened), sent %3 to Club, sold %4 duplicates (earned %5 coins), %6 special players."],
             "sort.desc":["由高到低","由高至低","Descending"],
             "sort.asc":["由低到高","由低至高","Ascending"],
             "packssort.switch.notice":["切换 %1 排序为按包回报价值 %2 排序","切換 %1 排序為依據包回報價值的 %2 排序","Switch %1 sorting to %2 sorting based on pack returns"],
@@ -9697,6 +9700,10 @@
                                     "fsu-bulkopen call-to-action"
                                 )
                                 bulkOpenBtn.__currencyLabel.textContent = fy("openpack.storebtn.subtext")
+                                //26.10-mod-04 压缩按钮字号以完整展示内容
+                                bulkOpenBtn.getRootElement().style.fontSize = "75%";
+                                bulkOpenBtn.getRootElement().style.padding = "2px 4px";
+                                bulkOpenBtn.__currencyLabel.style.fontSize = "75%";
 
                                 //26.10 一键开包（出售重复）按钮 — 仅可交易包显示
                                 if (packInfo.tradable && !itemElement.querySelector(".fsu-selldup")) {
@@ -9710,6 +9717,10 @@
                                         "fsu-selldup call-to-action"
                                     )
                                     sellDupBtn.__currencyLabel.textContent = fy("openpack.selldupbtn.subtext")
+                                    //26.10-mod-04 压缩按钮字号以完整展示内容
+                                    sellDupBtn.getRootElement().style.fontSize = "75%";
+                                    sellDupBtn.getRootElement().style.padding = "2px 4px";
+                                    sellDupBtn.__currencyLabel.style.fontSize = "75%";
                                     //布局：出售重复(左1/4) | 批量打开(中1/4) | 打开扩展包(右1/2)
                                     item.__articleActionContainer.prepend(sellDupBtn.getRootElement())
                                     sellDupBtn.getRootElement().after(bulkOpenBtn.getRootElement())
@@ -9733,6 +9744,35 @@
                                     const child = container.children[i];
                                     if (!child.classList.contains("fsu-selldup") && !child.classList.contains("fsu-bulkopen")) {
                                         child.style.flex = "2";
+                                        child.style.minWidth = "0";
+                                    }
+                                }
+                            }
+                            //26.10-mod-04 非球员包：简化批量按钮（非重复->俱乐部，重复->出售）
+                            if (!packInfo.isPlayers && !itemElement.querySelector(".fsu-bulkopen-mixed")) {
+                                let bulkMixedBtn = events.createButton(
+                                    new UTCurrencyButtonControl(),
+                                    fy("openpack.storebtn.text") + ` (${packInfo.count})`,
+                                    (e) => {
+                                        events.showLoader();
+                                        events.openPacksMixed(item.articleId, packInfo.fullName, packInfo.count);
+                                    },
+                                    "fsu-bulkopen-mixed call-to-action"
+                                )
+                                bulkMixedBtn.__currencyLabel.textContent = fy("openpack.mixedbtn.subtext")
+                                bulkMixedBtn.getRootElement().style.fontSize = "75%";
+                                bulkMixedBtn.getRootElement().style.padding = "2px 4px";
+                                bulkMixedBtn.__currencyLabel.style.fontSize = "75%";
+                                item.__articleActionContainer.prepend(bulkMixedBtn.getRootElement())
+                                item.__articleActionContainer.style.display = "flex";
+                                item.__articleActionContainer.style.gap = "0.5rem";
+                                item.__articleActionContainer.style.flexWrap = "nowrap";
+                                bulkMixedBtn.getRootElement().style.flex = "1";
+                                bulkMixedBtn.getRootElement().style.minWidth = "0";
+                                for (let i = 0; i < item.__articleActionContainer.children.length; i++) {
+                                    const child = item.__articleActionContainer.children[i];
+                                    if (!child.classList.contains("fsu-bulkopen-mixed")) {
+                                        child.style.flex = "1";
                                         child.style.minWidth = "0";
                                     }
                                 }
@@ -13715,6 +13755,163 @@
                 info.run.openPacks = false;
                 if (!errorOccurred && packOpened > 0) {
                     popupEnd();
+                }
+            }
+        };
+
+        //** 26.10-mod-04 批量开包：混合包（非palyers包）简化处理 */
+        //非重复→俱乐部，重复→全部出售（哪怕是0元）
+        events.openPacksMixed = async (packId, packName, packNum) => {
+            const controller = cntlr.current();
+            repositories.Item.unassigned.reset();
+            const unassignedItems = await new Promise((resolve) => {
+                services.Item.requestUnassignedItems().observe(controller, (e, t) => {
+                    e.unobserve(controller);
+                    resolve(t);
+                });
+            });
+            if (unassignedItems.success && JSUtils.isObject(unassignedItems.response)) {
+                if(0 < unassignedItems.response.items.length){
+                    events.hideLoader();
+                    cntlr.current().gotoUnassigned();
+                    events.notice(fy("openpack.unassigned.notice"), 2);
+                    return;
+                }
+            } else {
+                events.hideLoader();
+                const code = unassignedItems.error?.code || unassignedItems.status;
+                events.notice(fy(["openpack.openerror.notice", code]), 2);
+                return;
+            }
+
+            // 获取包数据
+            const storeResult = await new Promise((resolve) => {
+                services.Store.getPacks(PurchasePackType.ALL, true, true).observe(controller, (e, t) => {
+                    e.unobserve(controller);
+                    resolve(t);
+                });
+            });
+            if (!storeResult.success || !JSUtils.isObject(storeResult.response)) {
+                events.hideLoader();
+                return;
+            }
+
+            const loadingTitle = ["openpack.progress.loadertext1", packName];
+            events.changeLoadingText(loadingTitle);
+
+            const allPacks = _.filter(repositories.Store.myPacks.values(), { id: packId });
+            if (allPacks.length < packNum) {
+                events.notice(fy(["openpack.packnotenough.notice", packName, allPacks.length, packNum]), 2);
+                return;
+            }
+
+            events.showLoader();
+            const packs = _.take(allPacks, packNum);
+            let packOpened = 0;
+            let errorOccurred = false;
+            const processedItems = []; // { action: 'club'|'sell', item }
+
+            try {
+                for (const [index, pack] of packs.entries()) {
+                    events.changeLoadingText(loadingTitle, ["openpack.progress.loadertext2", index + 1, packNum]);
+
+                    const openResult = await new Promise((resolve) => {
+                        pack.open().observe(controller, (e, t) => {
+                            e.unobserve(controller);
+                            resolve(t);
+                        });
+                    });
+
+                    if (!openResult.success || !JSUtils.isObject(openResult.response)) {
+                        errorOccurred = true;
+                        break;
+                    }
+
+                    if (pack instanceof UTStoreItemPackEntity && pack?.isMyPack) {
+                        services.User.getUser().decrementNumUnopenedPacks();
+                    }
+
+                    packOpened++;
+
+                    const toClub = [];
+                    const toSell = [];
+
+                    for (const item of openResult.response.items) {
+                        //查重复（不区分球员/消耗品/经理等物品类型）
+                        const inClub = events.getItemBy(2, { definitionId: item.definitionId }, false, repositories.Item.club.items.values());
+                        if (inClub.length) {
+                            toSell.push(item);
+                        } else {
+                            toClub.push(item);
+                        }
+                    }
+
+                    //26.10-mod-04 可配置：非重复物品直接出售（开关开启则全部出售）
+                    if (info.set.mixedpacksell && toClub.length > 0) {
+                        toSell.push(...toClub);
+                        toClub.length = 0;
+                    }
+
+                    //非重复物品→俱乐部
+                    if (toClub.length > 0) {
+                        const moveResult = await new Promise((resolve) => {
+                            services.Item.move(toClub, ItemPile.CLUB).observe(controller, (e, t) => {
+                                e.unobserve(controller);
+                                resolve(t);
+                            });
+                        });
+                        if (moveResult.success) {
+                            processedItems.push(...toClub.map(item => ({ action: 'club', item, pack: index + 1 })));
+                        } else {
+                            errorOccurred = true;
+                            break;
+                        }
+                    }
+
+                    //重复物品→全部出售（哪怕是0元）
+                    if (toSell.length > 0) {
+                        const sellResult = await new Promise((resolve) => {
+                            services.Item.discard(toSell).observe(controller, (e, t) => {
+                                e.unobserve(controller);
+                                resolve(t);
+                            });
+                        });
+                        if (sellResult.success) {
+                            processedItems.push(...toSell.map(item => ({ action: 'sell', item, pack: index + 1 })));
+                        } else {
+                            //discard失败→fallback到转会名单
+                            console.warn("混合包discard失败, fallback到转会名单:", sellResult);
+                            const fbResult = await new Promise((resolve) => {
+                                services.Item.move(toSell, ItemPile.TRANSFER).observe(controller, (e, t) => {
+                                    e.unobserve(controller);
+                                    resolve(t);
+                                });
+                            });
+                            if (fbResult.success) {
+                                processedItems.push(...toSell.map(item => ({ action: 'sell', item, pack: index + 1 })));
+                            }
+                        }
+                    }
+
+                    if (toClub.length + toSell.length !== openResult.response.items.length) {
+                        errorOccurred = true;
+                        break;
+                    }
+
+                    await new Promise((resolve) => {
+                        setTimeout(resolve, 500 + Math.floor(Math.random() * 1000));
+                    });
+                }
+            } finally {
+                events.hideLoader();
+                if (!errorOccurred && packOpened > 0) {
+                    const clubCount = processedItems.filter(i => i.action === 'club').length;
+                    const sellCount = processedItems.filter(i => i.action === 'sell').length;
+                    const totalCoins = processedItems.reduce((acc, i) => acc + (i.action === 'sell' ? (i.item.discardValue || 0) : 0), 0);
+                    const specialCount = processedItems.filter(i => i.item.isSpecial && i.item.isSpecial()).length;
+                    const popupTitle = fy(["openpack.result.popupt", packName]);
+                    const popupText = fy(["openpack.mixed.result", packOpened, packNum - packOpened, clubCount, sellCount, totalCoins.toLocaleString(), specialCount]);
+                    events.openPacksResultPopup(popupTitle, popupText, [], "");
                 }
             }
         };
