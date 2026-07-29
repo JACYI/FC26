@@ -9763,14 +9763,29 @@
                                 bulkMixedBtn.getRootElement().style.fontSize = "75%";
                                 bulkMixedBtn.getRootElement().style.padding = "2px 4px";
                                 bulkMixedBtn.__currencyLabel.style.fontSize = "75%";
-                                item.__articleActionContainer.prepend(bulkMixedBtn.getRootElement())
-                                item.__articleActionContainer.style.display = "flex";
-                                item.__articleActionContainer.style.gap = "0.5rem";
-                                item.__articleActionContainer.style.flexWrap = "nowrap";
+                                //26.10-mod-04-fix 非球员包没有__articleActionContainer，需创建或复用容器
+                                let mixedContainer = item.__articleActionContainer;
+                                if (!mixedContainer) {
+                                    mixedContainer = events.createElementWithConfig("div", {
+                                        style: { display: "flex", gap: "0.5rem", flexWrap: "nowrap" }
+                                    });
+                                    // 在卡片描述信息后面插入按钮行
+                                    if (item._fsuExtraInfo) {
+                                        item._fsuExtraInfo.after(mixedContainer);
+                                    } else if (item.__articleDesc) {
+                                        item.__articleDesc.after(mixedContainer);
+                                    } else {
+                                        item.getRootElement().appendChild(mixedContainer);
+                                    }
+                                }
+                                mixedContainer.prepend(bulkMixedBtn.getRootElement())
+                                mixedContainer.style.display = "flex";
+                                mixedContainer.style.gap = "0.5rem";
+                                mixedContainer.style.flexWrap = "nowrap";
                                 bulkMixedBtn.getRootElement().style.flex = "1";
                                 bulkMixedBtn.getRootElement().style.minWidth = "0";
-                                for (let i = 0; i < item.__articleActionContainer.children.length; i++) {
-                                    const child = item.__articleActionContainer.children[i];
+                                for (let i = 0; i < mixedContainer.children.length; i++) {
+                                    const child = mixedContainer.children[i];
                                     if (!child.classList.contains("fsu-bulkopen-mixed")) {
                                         child.style.flex = "1";
                                         child.style.minWidth = "0";
