@@ -10534,7 +10534,10 @@
                 view = controller.getView(),
                 SBCSetEntity = services.SBC.repository.getSetById(id),
                 challenge;
-            events.showLoader();
+            //26.09-mod-09 批量模式后续轮次保留遮罩不闪现加载动画（保持进度文字连贯）
+            if (!info.run._fastBatchInfo || !info.run._fastBatchInfo._progressShown) {
+                events.showLoader();
+            }
             //正在执行一键三连(X/3) 首轮即显示进度
             if (info.run._fastBatchInfo && !info.run._fastBatchInfo._progressShown) {
                 info.run._fastBatchInfo._progressShown = true;
@@ -10654,7 +10657,10 @@
                             events.notice(`fastsbc.error_${errorCode}`,2)
                         }
                     });
-                    events.hideLoader();
+                    //26.09-mod-09 批量模式保留遮罩不隐藏（后续轮次直接更新进度文字）
+                    if (!info.run._fastBatchInfo) {
+                        events.hideLoader();
+                    }
                 }else if(NetworkErrorManager.checkCriticalStatus(t.status)){
                     NetworkErrorManager.handleStatus(t.status);
                     events.hideLoader();
@@ -10685,7 +10691,7 @@
             if (info.run._fastBatchInfo) {
                 info.run._fastBatchInfo.current++;
                 if (info.run._fastBatchInfo.current < info.run._fastBatchInfo.total) {
-                    events.showLoader();
+                    //26.09-mod-09 批量轮次间保留遮罩不闪现加载动画，仅更新进度文字
                     events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current + 1, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
                     //点击屏幕中断批量：用户点击加载文字即取消剩余次数
                     const _fsuCancelBatch = () => {
@@ -10700,6 +10706,7 @@
                     return;
                 }
                 delete info.run._fastBatchInfo;
+                events.hideLoader();
             }
             var rewardsController = new UTGameRewardsViewController(set.awards);
             rewardsController.init(),
