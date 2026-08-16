@@ -83,7 +83,7 @@
             "range":[46,99],
             "build":{"league":true,"flag":false,"untradeable":true,"ignorepos":true,"academy":false,"strictlypcik":true,"comprare":true,"comprange":true,"firststorage":true,"sbfirstcommon":true},
             "league":{2012:'中超',61:'英乙',60:'英甲',14:'英冠',13:'英超',2208:'英丙',2149:'印超',32:'意乙',31:'意甲',54:'西乙',53:'西甲',68:'土超',50:'苏超',308:'葡超',39:'美职联',17:'法乙',16:'法甲',20:'德乙',19:'德甲',2076:'德丙',2118:'传奇',353:'阿甲'},
-            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain","discardbs"]},
+            "setfield":{"card":["pos","price","other","club","low","meta"],"player":["auction","futbin","getprice","loas","uatoclub","transfertoclub","pickbest"],"sbc":["top","right","quick","duplicate","records","input","icount","template","templatemode","market","sback","cback","dupfill","autofill","squadcmpl","conceptbuy","meetsreq","headentrance"],"info":["obj","sbc","sbcf","sbcs","pack","squad","skipanimation","sbcagain","packagain","discardbs","sellall"]},
             "set":{},
             "lock":[],
             "autobuy":{"controller":null,"infoViews":{},"logView":{},"log":[]},
@@ -1606,6 +1606,12 @@
             "openpack.progress.coins":["金币","金幣","coins"],
             "openpack.progress.unassigned":["未分配","未分配","Unassigned"],
             "openpack.result.popupm3":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售 %5 个（+%6 金币），%7 个特别球员，最高评分 %8，未分配 %9 个。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售 %5 個（+%6 金幣），%7 名特別球員，最高評分為 %8，未分配 %9 個。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 (+%6 coins), %7 special players, highest rating %8, %9 unassigned."],
+            "openpack.sellallbtn.text":["自动开启并全部出售","自動開啟並全部出售","Open & Sell All"],
+            "openpack.sellallbtn.subtext":["所有球员立即出售换金币","所有球員立即出售換金幣","All players sold for coins immediately"],
+            "openpack.sellall.confirm":["⚠️ 开包后所有球员/物品将立即出售换金币，不可恢复！","⚠️ 開包後所有球員/物品將立即出售換金幣，不可恢復！","⚠️ All players/items will be sold immediately for coins. This cannot be undone!"],
+            "openpack.mode.normal":["普通批量","普通批量","Normal"],
+            "openpack.mode.selldup":["出售重复","出售重複","Sell Dupes"],
+            "openpack.mode.sellall":["全部出售","全部出售","Sell All"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
             "sort.asc":["由低到高","由低至高","Ascending"],
@@ -9711,6 +9717,27 @@
 
                                 //26.10 一键开包（出售重复）按钮 — 仅可交易包显示
                                 if (packInfo.tradable && !itemElement.querySelector(".fsu-selldup")) {
+                                    //26.10-jacyi.2 [C-02] 自动开启并全部出售按钮（红色警示样式，防误点核心）
+                                    let sellAllBtn = events.createButton(
+                                        new UTCurrencyButtonControl(),
+                                        fy("openpack.sellallbtn.text") + ` (${packInfo.count})`,
+                                        (e) => {
+                                            //两级确认：info_sellall 开关默认开 → 红色确认弹窗；关闭则直接执行
+                                            if (info.set.info_sellall) {
+                                                events.openPacksConfirmPopup(item.articleId, packInfo.fullName, packInfo.count, false, 'sellAll');
+                                            } else {
+                                                events.showLoader();
+                                                events.openPacks(item.articleId, packInfo.fullName, packInfo.count, false, true);
+                                            }
+                                        },
+                                        "fsu-sellall call-to-action"
+                                    )
+                                    sellAllBtn.__currencyLabel.textContent = fy("openpack.sellallbtn.subtext")
+                                    sellAllBtn.getRootElement().style.flex = "1";
+                                    sellAllBtn.getRootElement().style.minWidth = "0";
+                                    sellAllBtn.getRootElement().style.background = "#c0392b";
+                                    sellAllBtn.getRootElement().style.color = "#fff";
+
                                     let sellDupBtn = events.createButton(
                                         new UTCurrencyButtonControl(),
                                         fy("openpack.selldupbtn.text") + ` (${packInfo.count})`,
@@ -9721,9 +9748,14 @@
                                         "fsu-selldup call-to-action"
                                     )
                                     sellDupBtn.__currencyLabel.textContent = fy("openpack.selldupbtn.subtext")
-                                    //布局：出售重复(左1/4) | 批量打开(中1/4) | 打开扩展包(右1/2)
-                                    item.__articleActionContainer.prepend(sellDupBtn.getRootElement())
+                                    sellDupBtn.getRootElement().style.flex = "1";
+                                    sellDupBtn.getRootElement().style.minWidth = "0";
+                                    //布局：全出售(1/6) | 出售重复(1/6) | 批量打开(1/6) | 打开扩展包(1/2)
+                                    item.__articleActionContainer.prepend(sellAllBtn.getRootElement())
+                                    sellAllBtn.getRootElement().after(sellDupBtn.getRootElement())
                                     sellDupBtn.getRootElement().after(bulkOpenBtn.getRootElement())
+                                    bulkOpenBtn.getRootElement().style.flex = "1";
+                                    bulkOpenBtn.getRootElement().style.minWidth = "0";
                                 } else {
                                     //不可交易包 → 批量打开(左1/2) | 打开扩展包(右1/2)
                                     item.__articleActionContainer.prepend(bulkOpenBtn.getRootElement())
@@ -13717,14 +13749,15 @@
         };
 
         //** 25.21 批量开包：开包确认弹窗 */
-        events.openPacksConfirmPopup = (packId, packName, packCount, sellDup) => {
+        events.openPacksConfirmPopup = (packId, packName, packCount, sellDup, mode) => {
             let popupController = new EADialogViewController({
                 dialogOptions: [
                     { labelEnum: enums.UIDialogOptions.OK },
                     { labelEnum: enums.UIDialogOptions.CANCEL }
                 ],
                 //26.10-jacyi.1 [C-01] sellDup 模式显示对应文案
-                message: sellDup ? fy(["openpack.selldupbtn.popupm", packCount]) : fy(["openpack.storebtn.popupm",info.set.goldenrange]),
+                //26.10-jacyi.2 [C-02] sellAll 模式红色警示文案（不可恢复）
+                message: mode === 'sellAll' ? fy("openpack.sellall.confirm") : (sellDup ? fy(["openpack.selldupbtn.popupm", packCount]) : fy(["openpack.storebtn.popupm",info.set.goldenrange])),
                 title: fy(["openpack.storebtn.popupt", packName]),
                 type: EADialogView.Type.MESSAGE
             });
@@ -13767,12 +13800,49 @@
             numberInput.setMinValue(1);
             numberInput.setValue(packCount);
             popupView.__msg.appendChild(numberInput.getRootElement())
+
+            //26.10-jacyi.2 [C-02] 模式三选：普通批量 / 出售重复 / 全部出售（sellAll 红色高亮）
+            let currentMode = mode === 'sellAll' ? 'sellAll' : (sellDup ? 'sellDup' : 'normal');
+            const modeRow = document.createElement("div");
+            modeRow.style.cssText = "display:flex;gap:.5rem;justify-content:center;margin:.8rem auto .5rem;flex-wrap:wrap;";
+            const modeOrder = ["normal", "sellDup", "sellAll"];
+            const modeLabels = {
+                normal: fy("openpack.mode.normal"),
+                sellDup: fy("openpack.mode.selldup"),
+                sellAll: "⚠️ " + fy("openpack.mode.sellall")
+            };
+            const modeBtns = {};
+            const applyMode = (m) => {
+                currentMode = m;
+                for (const k of modeOrder) {
+                    const bb = modeBtns[k];
+                    bb.style.borderColor = "#555";
+                    bb.style.color = "#ccc";
+                    bb.style.background = "#222";
+                }
+                const bb = modeBtns[m];
+                bb.style.borderColor = m === 'sellAll' ? "#c0392b" : "#2196F3";
+                bb.style.color = m === 'sellAll' ? "#fff" : "#2196F3";
+                bb.style.background = m === 'sellAll' ? "#c0392b" : "#333";
+            };
+            for (const m of modeOrder) {
+                const b = document.createElement("button");
+                b.textContent = modeLabels[m];
+                b.style.cssText = "padding:.4rem .9rem;border-radius:4px;cursor:pointer;border:1px solid #555;background:#222;color:#ccc;font-size:.95rem;";
+                b.addEventListener("click", () => applyMode(m));
+                modeBtns[m] = b;
+                modeRow.appendChild(b);
+            }
+            applyMode(currentMode);
+            popupView.__msg.appendChild(modeRow)
+
             popupController.onExit.observe(popupController,(e, z) => {
                 e.unobserve(popupController);
                 if(z == 2){
                     //26.10-jacyi.1 [C-01] 传递 sellDup 模式
+                    //26.10-jacyi.2 [C-02] 模式三选 → sellAll 参数
                     events.showLoader();
-                    events.openPacks(packId, packName, numberInput.getValue(), sellDup);
+                    events.openPacks(packId, packName, numberInput.getValue(), currentMode !== 'normal', currentMode === 'sellAll');
                 }
             });
             console.log(popupView, numberInput)

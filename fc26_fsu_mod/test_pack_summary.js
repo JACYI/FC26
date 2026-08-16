@@ -108,6 +108,20 @@ test('汇总：sellCoins 累加含 0 值容错', () => {
     assert.strictEqual(buildPackSummary(records).sellCoins, 600);
 });
 
+test('汇总：sellAll 模式全量出售（storeLoc=3）收敛统计', () => {
+    const records = [
+        makeRecord(3, 82, { discardValue: 2000, special: true }),
+        makeRecord(3, 60, { discardValue: 100 }),
+        makeRecord(3, 75, { discardValue: 400 })
+    ];
+    const s = buildPackSummary(records);
+    assert.strictEqual(s.sellCount, 3);
+    assert.strictEqual(s.sellCoins, 2500);
+    assert.strictEqual(s.clubCount + s.storageCount + s.unassignedCount, 0);
+    assert.strictEqual(s.specialCount, 1);
+    assert.strictEqual(s.playerMaxRating, 82);
+});
+
 // --- formatProgressText ---
 test('进度文案：全去向展示', () => {
     const text = formatProgressText(
