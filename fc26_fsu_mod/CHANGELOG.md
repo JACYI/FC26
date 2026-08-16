@@ -9,7 +9,35 @@
 
 ---
 
-## v26.10-jacyi.4 (2026-08-16)
+## v26.10-jacyi.5 (2026-08-16)
+
+> 修复：可交易混合包（如白银组合包，contentType ≠ 'players'）不显示开包/全出售按钮
+
+### 背景
+
+白银组合包为**可交易混合包**（含球员+物品），`packInfo.isPlayers`（contentType === 'players'）为 false，导致整个 FSU 按钮区（批量打开/出售重复/全出售）未注入。需求文档明确"可交易的球员**或物品**"。
+
+### 修改内容
+
+1. **注入条件放宽**（商店按钮区）：`packInfo.isPlayers` → `(packInfo.isPlayers || packInfo.tradable)`——可交易包（纯球员/混合/物品包）都显示三按钮；不可交易混合包仍不注入
+2. **引擎 isDiscardBs 方法缺失容错**（[C-01] `_makeDeps`）：非球员物品无 `isSpecial`/`isBronzeRating`/`isSilverRating` 方法，加 typeof 守卫 + try/catch，缺失时返回 false（不误卖、不抛错）
+3. **非球员物品分类行为**：普通模式 → 移俱乐部（失败留未分配，引擎降级矩阵兜底）；sellAll 模式 → 全部 toSell（物品+球员出售换金币）
+4. 文案：全出售按钮副标题改为"所有球员/物品立即出售换金币"
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`
+  - 商店按钮注入条件（9685 附近）
+  - `[C-01] packs._makeDeps` — isDiscardBs 容错
+  - `info.localization` — sellallbtn.subtext 文案更新
+- 测试：`test_classify_pack.js` 新增 4 个混合包用例（物品不误卖/sellAll 收敛/物品重复去向/不落空）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. 白银组合包（可交易）现在显示三个按钮（红色全出售/出售重复/批量打开）
+2. 普通批量打开混合包 → 球员进俱乐部/仓库，物品进俱乐部，无报错中断
+3. 全出售混合包 → 球员+物品全部出售，金币入账，汇总正确
+4. 不可交易混合包仍不显示按钮（预期）
 
 > 自定义流程编排 — 参考 A 脚本 routines：SBC 完成+开包循环，可排序可每日
 

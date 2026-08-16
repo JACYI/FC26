@@ -1607,7 +1607,7 @@
             "openpack.progress.unassigned":["未分配","未分配","Unassigned"],
             "openpack.result.popupm3":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售 %5 个（+%6 金币），%7 个特别球员，最高评分 %8，未分配 %9 个。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售 %5 個（+%6 金幣），%7 名特別球員，最高評分為 %8，未分配 %9 個。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 (+%6 coins), %7 special players, highest rating %8, %9 unassigned."],
             "openpack.sellallbtn.text":["自动开启并全部出售","自動開啟並全部出售","Open & Sell All"],
-            "openpack.sellallbtn.subtext":["所有球员立即出售换金币","所有球員立即出售換金幣","All players sold for coins immediately"],
+            "openpack.sellallbtn.subtext":["所有球员/物品立即出售换金币","所有球員/物品立即出售換金幣","All players & items sold for coins immediately"],
             "openpack.sellall.confirm":["⚠️ 开包后所有球员/物品将立即出售换金币，不可恢复！","⚠️ 開包後所有球員/物品將立即出售換金幣，不可恢復！","⚠️ All players/items will be sold immediately for coins. This cannot be undone!"],
             "openpack.mode.normal":["普通批量","普通批量","Normal"],
             "openpack.mode.selldup":["出售重复","出售重複","Sell Dupes"],
@@ -9816,7 +9816,8 @@
                                 });
                                 itemElement.appendChild(packCount)
                             }
-                            if (packInfo.isPlayers && !itemElement.querySelector(".fsu-bulkopen")) {
+                            //26.10-jacyi.5 [C-05] 放宽为可交易包（含混合包/物品包，如白银组合包）；不可交易混合包仍不注入
+                            if ((packInfo.isPlayers || packInfo.tradable) && !itemElement.querySelector(".fsu-bulkopen")) {
                                 //25.21 批量开包按钮
                                 let bulkOpenBtn = events.createButton(
                                     new UTCurrencyButtonControl(),
@@ -16750,7 +16751,14 @@
                         free: 100 - repositories.Item.numItemsInCache(ItemPile.STORAGE)
                     };
                 },
-                isDiscardBs: (item) => item.untradeableCount > 0 && !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating()),
+                //26.10-jacyi.5 [C-05] 方法缺失容错：混合包含非球员物品（无 isSpecial/isBronzeRating）
+                isDiscardBs: (item) => {
+                    try {
+                        return item.untradeableCount > 0 &&
+                            typeof item.isSpecial === "function" && !item.isSpecial() &&
+                            typeof item.isBronzeRating === "function" && (item.isBronzeRating() || (typeof item.isSilverRating === "function" && item.isSilverRating()));
+                    } catch (e) { return false; }
+                },
                 isSpecial: (item) => item.isSpecial(),
                 notify: (t, n) => events.notice(t, n),
                 changeLoadingText: (t, t2) => events.changeLoadingText(t, t2),

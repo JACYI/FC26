@@ -76,7 +76,7 @@ function makeItem(defId, rating, opts = {}) {
     };
 }
 
-// 默认 ctx 工厂
+// 默认 ctx 工厂（isDiscardBs 为守卫版：混合包非球员物品无 isSpecial/isBronzeRating 方法时容错）
 function makeCtx(overrides = {}) {
     const clubSet = overrides.clubSet || new Set();
     return Object.assign({
@@ -86,7 +86,13 @@ function makeCtx(overrides = {}) {
         storageMinRating: 0,
         storageFree: 100,
         inClub: (defId) => clubSet.has(defId),
-        isDiscardBs: (item) => item.untradeableCount > 0 && !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating()),
+        isDiscardBs: (item) => {
+            try {
+                return item.untradeableCount > 0 &&
+                    typeof item.isSpecial === "function" && !item.isSpecial() &&
+                    typeof item.isBronzeRating === "function" && (item.isBronzeRating() || (typeof item.isSilverRating === "function" && item.isSilverRating()));
+            } catch (e) { return false; }
+        },
         onUnclassifiable: 'unassigned'
     }, overrides);
 }
@@ -256,6 +262,48 @@ test('⑩ 空包 → 四去向全空', () => {
     const out = classifyPackItems([], makeCtx());
     assert.strictEqual(out.toClub.length + out.toStorage.length + out.toSell.length + out.toUnassigned.length, 0);
     assert.strictEqual(out.stop, false);
+});
+
+// --- ⑪ 混合包：非球员物品（无 isSpecial/isBronzeRating 方法）---
+function makeNonPlayerItem(defId, opts = {}) {
+    _seq++;
+    return {
+        id: opts.id || `np-${_seq}`,
+        definitionId: defId,
+        rating: 0,
+        untradeableCount: opts.untradeable ? 1 : 0,
+        discardValue: opts.discardValue || 0
+        // 故意不提供 isSpecial/isBronzeRating/isSilverRating 方法
+    };
+}
+
+test('⑪ 混合包：非球员物品+discardBs → 不炸，进俱乐部（非铜银球员判定）', () => {
+    const items = [makeNonPlayerItem('consumable-1'), makeNonPlayerItem('consumable-2')];
+    const out = classifyPackItems(items, makeCtx({ discardBs: true }));
+    assert.strictEqual(out.toSell.length, 0, '物品不应被 discardBs 误卖');
+    assert.strictEqual(out.toClub.length, 2);
+    assertInvariant(out, items);
+});
+
+test('⑪b 混合包：sellAll 模式物品全部 toSell', () => {
+    const items = [makeItem(80), makeNonPlayerItem('consumable-1'), makeNonPlayerItem('contract-2')];
+    const out = classifyPackItems(items, makeCtx({ sellAll: true }));
+    assert.strictEqual(out.toSell.length, 3, '球员+物品全部出售');
+    assertInvariant(out, items);
+});
+
+test('⑪c 混合包：物品重复（inClub）+仓库空 → toStorage（rating 0 >= threshold 0）', () => {
+    const items = [makeNonPlayerItem('consumable-1')];
+    const out = classifyPackItems(items, makeCtx({ clubSet: new Set(['consumable-1']), storageMinRating: 0, storageFree: 10 }));
+    assert.strictEqual(out.toStorage.length, 1);
+    assertInvariant(out, items);
+});
+
+test('⑪d 混合包：物品重复+仓库有最低分（40+）→ toUnassigned（不落空）', () => {
+    const items = [makeNonPlayerItem('consumable-1')];
+    const out = classifyPackItems(items, makeCtx({ clubSet: new Set(['consumable-1']), storageMinRating: 40, storageFree: 10 }));
+    assert.strictEqual(out.toUnassigned.length, 1);
+    assertInvariant(out, items);
 });
 
 // ===== 结果 =====
