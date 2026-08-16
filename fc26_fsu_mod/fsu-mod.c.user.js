@@ -1614,6 +1614,7 @@
             "openpack.mode.sellall":["全部出售","全部出售","Sell All"],
             "set.solve.title":["AUTO SOLVE 求解","AUTO SOLVE 求解","AUTO SOLVE"],
             "set.solve.algorithm":["求解算法","求解演算法","Solve algorithm"],
+            "set.solve.algorithm.auto":["自动路由（智能）","自動路由（智能）","Auto route"],
             "set.solve.algorithm.legacy":["B 旧算法","B 舊演算法","Legacy (B)"],
             "set.solve.algorithm.fodder":["新算法（A风格）","新演算法（A風格）","Fodder-style"],
             "set.solve.count":["求解次数","求解次數","Solve count"],
@@ -8164,8 +8165,8 @@
                 let solveInner = document.createElement("div");
                 solveInner.classList.add("fsu-setbox");
                 solveInner.appendChild(set.addSelect("solve","algorithm",
-                    [["legacy", fy("set.solve.algorithm.legacy")], ["fodder", fy("set.solve.algorithm.fodder")]],
-                    info.set.solve_algorithm === "fodder" ? "fodder" : "legacy"));
+                    [["auto", fy("set.solve.algorithm.auto")], ["legacy", fy("set.solve.algorithm.legacy")], ["fodder", fy("set.solve.algorithm.fodder")]],
+                    ['auto', 'legacy', 'fodder'].indexOf(info.set.solve_algorithm) >= 0 ? info.set.solve_algorithm : "auto"));
                 solveInner.appendChild(set.addNumber("solve","count", info.set.solve_count || 1, 1, 20, 1));
                 solveInner.appendChild(set.addNumber("solve","minRating", info.set.solve_minRating || 40, 40, 99, 1));
                 solveInner.appendChild(set.addNumber("solve","maxRating", info.set.solve_maxRating || 99, 40, 99, 1));
@@ -17006,7 +17007,8 @@
             }
             o.minPrice = o.minPrice == null ? null : Math.max(0, parseInt(o.minPrice, 10) || 0);
             o.maxPrice = o.maxPrice == null ? null : Math.max(0, parseInt(o.maxPrice, 10) || 0);
-            o.algorithm = o.algorithm === 'fodder' ? 'fodder' : 'legacy';
+            //26.10-jacyi.7 [C-05] algorithm 支持 auto（默认），存量 legacy/fodder 兼容
+            o.algorithm = ['auto', 'legacy', 'fodder'].indexOf(o.algorithm) >= 0 ? o.algorithm : 'auto';
             o.commonsOnly = !!o.commonsOnly;
             o.untradeableOnly = !!o.untradeableOnly;
             o.storageOnly = !!o.storageOnly;
@@ -17051,7 +17053,7 @@
         }
 
         solver._defaults = () => ({
-            count: 1, algorithm: "legacy",
+            count: 1, algorithm: "auto",
             minRating: null, maxRating: null, minPrice: null, maxPrice: null,
             commonsOnly: false, untradeableOnly: false, storageOnly: false
         });
@@ -17059,7 +17061,8 @@
         solver._loadOptions = () => {
             const s = info.set || {};
             return {
-                algorithm: s.solve_algorithm === "fodder" ? "fodder" : "legacy",
+                //26.10-jacyi.7 [C-05] 默认 auto（存量 legacy/fodder 兼容保留）
+                algorithm: ['auto', 'legacy', 'fodder'].indexOf(s.solve_algorithm) >= 0 ? s.solve_algorithm : "auto",
                 count: s.solve_count || 1,
                 minRating: s.solve_minRating != null ? s.solve_minRating : null,
                 maxRating: s.solve_maxRating != null ? s.solve_maxRating : null,
@@ -17070,7 +17073,7 @@
 
         solver._pendingRs = null;
 
-        // 双算法选择器
+        // 算法选择器（26.10-jacyi.7 新增 auto：通用填充引擎）
         solver.algorithms = {
             // B 旧算法：原样走 B 的 fastSBC 链路（行为零变化）
             legacy: async (challenge, opts, deps) => {
@@ -17092,6 +17095,17 @@
                 } finally {
                     solver._pendingRs = null;
                 }
+            },
+            // [C-05] AUTO SOLVE 2.0：通用填充引擎 + 提交流（不再依赖 fastsbc 缓存，能求解化学/俱乐部类 SBC）
+            auto: async (challenge, opts, deps) => {
+                const r = await fill.run(challenge, { algorithm: "auto" }, fill._makeDeps());
+                if (!r.ok) return { solved: false, reason: r.reason || "fill-failed" };
+                try {
+                    fill._makeDeps().playerListFillSquad(challenge, r.filled, 1);
+                } catch (e) { console.warn("[C-05] fill 落阵失败", e); }
+                const setEntity = deps.getSet(challenge.setId);
+                const ok = await events.submitChallengeFlow(challenge, setEntity, cntlr.current());
+                return { solved: !!ok, reason: ok ? null : "submit-failed" };
             }
         };
 
@@ -17130,7 +17144,10 @@
             for (const ch of targets) {
                 let r = null;
                 try {
-                    if (opts.algorithm === "fodder") {
+                    //26.10-jacyi.7 [C-05] auto 分支：通用填充引擎（不依赖 fastsbc 缓存）
+                    if (opts.algorithm === "auto") {
+                        r = await solver.algorithms.auto(ch, opts, deps);
+                    } else if (opts.algorithm === "fodder") {
                         r = await solver.algorithms.fodder(ch, opts, deps);
                     } else {
                         r = await solver.algorithms.legacy(ch, opts, deps);
@@ -17841,6 +17858,63 @@
             const reason = ok ? null : classifyFailure(attempts, parsed.flags, pool.length, totalSlots);
             return { ok: ok, filled: filled, reason: reason, algorithm: chain.join("+"), attempts: attempts };
         };
+
+        // [C-05] 提交流（从 fastSBC 提交段提取，逐行等价）：可提交检查 → 提交 → 奖励弹窗/页面刷新/PIN
+        events.submitChallengeFlow = (challenge, SBCSetEntity, controller) => new Promise((resolve) => {
+            try {
+                if (!challenge || !challenge.canSubmit || !challenge.canSubmit()) {
+                    utils.PopupManager.showAlert(utils.PopupManager.Alerts.SBC_INELIGIBLE_SQUAD);
+                    resolve(false); return;
+                }
+                if (!services.Configuration.getFeatureSetting(UTServerSettingsRepository.KEY.SBC_ALLOW_UNTRADEABLE) && challenge.hasUntradeableItems()) {
+                    utils.PopupManager.showAlert(utils.PopupManager.Alerts.SBC_UNTRADEABLE_NOT_ALLOWED);
+                    resolve(false); return;
+                }
+                if (!JSUtils.isValid(SBCSetEntity)) { resolve(false); return; }
+                TelemetryManager.trackEvent(TelemetryManager.Sections.SBC, TelemetryManager.Categories.BUTTON_PRESS, "SBC - Submit Challenge");
+                let t = services.UserSettings.getSBCValidationSkip();
+                services.SBC.submitChallenge(challenge, SBCSetEntity, t, services.Chemistry.isFeatureEnabled()).observe(controller, (eee, ttt) => {
+                    eee.unobserve(controller);
+                    let newChallenge = SBCSetEntity.getChallenge(challenge.id);
+                    if (ttt.success && newChallenge) {
+                        if (0 < newChallenge.awards.length) {
+                            var challengeRewards = new UTGameRewardsViewController(newChallenge.awards);
+                            challengeRewards.init(),
+                            challengeRewards.modalDisplayDimensions.width = "24em",
+                            challengeRewards.getView().setSbcChallenge(newChallenge),
+                            gPopupClickShield.setActivePopup(challengeRewards),
+                            challengeRewards.onExit.observe(controller, function(e) {
+                                e.unobserve(controller),
+                                events.showRewardsView(SBCSetEntity)
+                            })
+                        } else {
+                            ttt.data.setCompleted && events.showRewardsView(SBCSetEntity);
+                        }
+                        services.PIN.sendData(PINEventType.PAGE_VIEW, { type: PIN_PAGEVIEW_EVT_TYPE, pgid: "SBC - Rewards Overlay" });
+                        if (_.includes(controller.className, 'UTUnassignedItems')) { controller._fsuRefreshBtn._tapDetected(); }
+                        if (_.includes(controller.className, 'UTSBCSquad')) { controller.getNavigationController().popViewController(); }
+                        if (_.includes(controller.className, 'UTSBCHub')) {
+                            if (controller.getView()._interactionState == false) { controller.getView().setInteractionState(true); }
+                            controller._requestSBCData();
+                        }
+                        if (_.includes(controller.className, 'UTSBCChallenges')) {
+                            controller.getView().setSBCSet(controller.sbcViewModel.sbcSet);
+                            events.sbcSubPrice(controller.sbcViewModel.sbcSet.id, controller.getView());
+                        }
+                        events.SBCListInsertToFront(SBCSetEntity.id, 1);
+                        events.notice("fastsbc.success", 0);
+                        resolve(true);
+                    } else {
+                        if (ttt.status == 521) { events.notice("fastsbc.error_5", 2); }
+                        else { services.Notification.queue([services.Localization.localize("notification.sbcChallenges.failedToSubmit"), UINotificationType.NEGATIVE]); }
+                        resolve(false);
+                    }
+                });
+            } catch (e) {
+                console.warn("[C-05] submitChallengeFlow 异常", e);
+                resolve(false);
+            }
+        });
 
         // 按钮入口：填充 + 落阵保存
         fill.runForCurrent = async (controller, opts) => {

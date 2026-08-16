@@ -20,14 +20,15 @@ function normalizeSolveOptions(raw, defaults) {
     }
     o.minPrice = o.minPrice == null ? null : Math.max(0, parseInt(o.minPrice, 10) || 0);
     o.maxPrice = o.maxPrice == null ? null : Math.max(0, parseInt(o.maxPrice, 10) || 0);
-    o.algorithm = o.algorithm === 'fodder' ? 'fodder' : 'legacy';
+    //26.10-jacyi.7 [C-05] algorithm 支持 auto（默认），存量 legacy/fodder 兼容
+    o.algorithm = ['auto', 'legacy', 'fodder'].indexOf(o.algorithm) >= 0 ? o.algorithm : 'auto';
     o.commonsOnly = !!o.commonsOnly;
     o.untradeableOnly = !!o.untradeableOnly;
     o.storageOnly = !!o.storageOnly;
     return o;
 }
 
-const DEFAULTS = { count: 1, algorithm: "legacy", minRating: null, maxRating: null, minPrice: null, maxPrice: null, commonsOnly: false, untradeableOnly: false, storageOnly: false };
+const DEFAULTS = { count: 1, algorithm: "auto", minRating: null, maxRating: null, minPrice: null, maxPrice: null, commonsOnly: false, untradeableOnly: false, storageOnly: false };
 
 // ===== 测试 =====
 let passed = 0, failed = 0;
@@ -87,14 +88,18 @@ test('价格 null 保持 null', () => {
 });
 
 // --- algorithm ---
-test('algorithm 非法值回退 legacy', () => {
-    assert.strictEqual(normalizeSolveOptions({ algorithm: "hack" }, DEFAULTS).algorithm, "legacy");
+test('algorithm 非法值回退 auto', () => {
+    assert.strictEqual(normalizeSolveOptions({ algorithm: "hack" }, DEFAULTS).algorithm, "auto");
 });
-test('algorithm=fodder 保留', () => {
+test('algorithm=fodder/legacy 保留', () => {
     assert.strictEqual(normalizeSolveOptions({ algorithm: "fodder" }, DEFAULTS).algorithm, "fodder");
+    assert.strictEqual(normalizeSolveOptions({ algorithm: "legacy" }, DEFAULTS).algorithm, "legacy");
 });
-test('algorithm 缺省 → legacy（新算法未验证前不默认启用）', () => {
-    assert.strictEqual(normalizeSolveOptions({}, DEFAULTS).algorithm, "legacy");
+test('algorithm=auto 保留', () => {
+    assert.strictEqual(normalizeSolveOptions({ algorithm: "auto" }, DEFAULTS).algorithm, "auto");
+});
+test('algorithm 缺省 → auto（通用填充引擎默认）', () => {
+    assert.strictEqual(normalizeSolveOptions({}, DEFAULTS).algorithm, "auto");
 });
 
 // --- 布尔开关 ---
