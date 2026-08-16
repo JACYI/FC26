@@ -1150,6 +1150,11 @@
             if(info.run.openPacks){
                 info.run.openPacks = false;
             }
+            //26.10-jacyi.1 [C-01] 批量开包取消改为令牌制：hideLoader 只置取消令牌，
+            //不再全局取消引擎（引擎收尾用专用 _finishLoader，互不干扰）
+            if (packs && packs._cancelToken) {
+                packs._cancelToken.cancelled = true;
+            }
             events.changeLoadingText("loadingclose.text");
         };
         //本地化文本显示程序
@@ -1592,6 +1597,15 @@
             "openpack.selldupbtn.subtext":["自动出售重复球员","自動出售重複球員","Auto Sell Duplicates"],
             "openpack.result.popupm_sell":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售重复 %5 个（获得 %6 金币），%7 个特别球员，最高评分 %8 。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售重複 %5 個（獲得 %6 金幣），%7 名特別球員，最高評分為 %8。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 duplicates (earned %6 coins), %7 special players, highest rating %8."],
             "openpack.storebtn.popupt":["批量打开提示 - %1","批量開啟提示 - %1","Bulk Open Notice - %1"],
+            "openpack.selldupbtn.popupm":["批量打开并自动出售重复球员，共 %1 个。","批量打開並自動出售重複球員，共 %1 個。","Bulk open and auto-sell duplicate players (%1 packs)."],
+            "openpack.progress.stop":["停止","停止","Stop"],
+            "openpack.progress.bottombar":["开包 %1/%2","開包 %1/%2","Opening %1/%2"],
+            "openpack.progress.club":["俱乐部","俱樂部","Club"],
+            "openpack.progress.storage":["仓库","倉庫","Storage"],
+            "openpack.progress.sell":["出售","出售","Sold"],
+            "openpack.progress.coins":["金币","金幣","coins"],
+            "openpack.progress.unassigned":["未分配","未分配","Unassigned"],
+            "openpack.result.popupm3":["共开启 %1 个球员包（%2个未开启），分配俱乐部 %3 个、SBC仓库 %4 个，出售 %5 个（+%6 金币），%7 个特别球员，最高评分 %8，未分配 %9 个。","共開啟 %1 個球員包（尚有 %2 個未開啟），已分配至俱樂部 %3 個、SBC 倉庫 %4 個，出售 %5 個（+%6 金幣），%7 名特別球員，最高評分為 %8，未分配 %9 個。","Opened %1 player packs (%2 not opened), assigned %3 to Club, %4 to SBC storage, sold %5 (+%6 coins), %7 special players, highest rating %8, %9 unassigned."],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
             "sort.asc":["由低到高","由低至高","Ascending"],
@@ -9688,10 +9702,8 @@
                                     new UTCurrencyButtonControl(),
                                     fy("openpack.storebtn.text") + ` (${packInfo.count})`,
                                     (e) => {
-                                        //带弹窗的数量选择，此处移除
-                                        //events.openPacksConfirmPopup(item.articleId, packInfo.fullName, packInfo.count)
-                                        events.showLoader();
-                                        events.openPacks(item.articleId, packInfo.fullName, packInfo.count);
+                                        //26.10-jacyi.1 [C-01] 接线数量选择弹窗（修复 B 的弹窗未接线缺陷）
+                                        events.openPacksConfirmPopup(item.articleId, packInfo.fullName, packInfo.count);
                                     },
                                     "fsu-bulkopen call-to-action"
                                 )
@@ -9703,8 +9715,8 @@
                                         new UTCurrencyButtonControl(),
                                         fy("openpack.selldupbtn.text") + ` (${packInfo.count})`,
                                         (e) => {
-                                            events.showLoader();
-                                            events.openPacks(item.articleId, packInfo.fullName, packInfo.count, true);
+                                            //26.10-jacyi.1 [C-01] 接线数量选择弹窗（sellDup 模式）
+                                            events.openPacksConfirmPopup(item.articleId, packInfo.fullName, packInfo.count, true);
                                         },
                                         "fsu-selldup call-to-action"
                                     )
@@ -13705,13 +13717,14 @@
         };
 
         //** 25.21 批量开包：开包确认弹窗 */
-        events.openPacksConfirmPopup = (packId, packName, packCount) => {
+        events.openPacksConfirmPopup = (packId, packName, packCount, sellDup) => {
             let popupController = new EADialogViewController({
                 dialogOptions: [
                     { labelEnum: enums.UIDialogOptions.OK },
                     { labelEnum: enums.UIDialogOptions.CANCEL }
                 ],
-                message: fy(["openpack.storebtn.popupm",info.set.goldenrange]),
+                //26.10-jacyi.1 [C-01] sellDup 模式显示对应文案
+                message: sellDup ? fy(["openpack.selldupbtn.popupm", packCount]) : fy(["openpack.storebtn.popupm",info.set.goldenrange]),
                 title: fy(["openpack.storebtn.popupt", packName]),
                 type: EADialogView.Type.MESSAGE
             });
@@ -13757,9 +13770,9 @@
             popupController.onExit.observe(popupController,(e, z) => {
                 e.unobserve(popupController);
                 if(z == 2){
-                    //console.log(packId, packName, packCount, numberInput.getValue())
+                    //26.10-jacyi.1 [C-01] 传递 sellDup 模式
                     events.showLoader();
-                    events.openPacks(packId, packName, numberInput.getValue());
+                    events.openPacks(packId, packName, numberInput.getValue(), sellDup);
                 }
             });
             console.log(popupView, numberInput)
@@ -13768,7 +13781,7 @@
         
         //** 25.21 批量开包：球员包结果弹窗 */
         //26.02 调整样式错乱问题
-        events.openPacksResultPopup = (title, text, players, desc) => {
+        events.openPacksResultPopup = (title, text, players, desc, scrollable) => {
             let popupController = new EADialogViewController({
                 dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
                 message: "",
@@ -13797,6 +13810,11 @@
                         padding: "0",
                     }
                 })
+                //26.10-jacyi.1 [C-01] 全量展示滚动容器（scrollable=true 时，默认不影响既有调用）
+                if (scrollable) {
+                    popupController._fsu.listBox.style.maxHeight = "60vh";
+                    popupController._fsu.listBox.style.overflowY = "auto";
+                }
                 popupController._fsu.list = events.createElementWithConfig("ul",{
                     classList: ["itemList", "fsu-popupItemList"]
                 })
@@ -16383,6 +16401,398 @@
         unsafeWindow.events = events;
         unsafeWindow.fy = fy;
         unsafeWindow.GM_addStyle = GM_addStyle;
+
+        // ============================================================
+        // [C-01] 批量开包引擎重构（v26.10-jacyi.1）
+        // ------------------------------------------------------------
+        // 修复 B 脚本（jackyi.1）批量开包中断的 6 个根因：
+        //   1. 空仓库 _.min([])=Infinity → 重复球员无法入仓库 → 核对失败中断
+        //   2. 分类落空（物品丢失）→ 数量核对失败 → 整批中断
+        //   3. 外层 try/finally 无 catch → 异常即放弃剩余包无提示
+        //   4. 中断/失败时不弹汇总（errorOccurred 时丢弃）
+        //   5. 取消机制与 hideLoader 全局耦合（任何 hideLoader 静默取消）
+        //   6. 数量选择弹窗未接线（直接全量开）
+        // 吸收 A 脚本（fodder）精华：进度提示（openedProgress）、去向统计
+        //   （openedRewardPacks）、限流退避（rateLimited）、仓库满策略（stoppedFull）
+        // 纯函数（//PURE:）复制进 test_*.js 测试 —— 修改实现必须同步测试
+        // ============================================================
+        var packs = {};
+
+        //PURE: 重试退避：指数增长，上限 30s
+        function nextRetryDelay(attempt, baseMs) {
+            return Math.min(baseMs * Math.pow(2, attempt), 30000);
+        }
+
+        //PURE: 致命错误码（会话失效等，不重试；兼容字符串/数字错误码）
+        function isFatalError(code, fatalCodes) {
+            return (fatalCodes || [401, 403]).some(c => String(c) === String(code));
+        }
+
+        //PURE: 包内物品分类（核心决策，副作用全部经 ctx 注入）
+        // ctx: { sellDup, sellAll, discardBs, storageMinRating, storageFree,
+        //        inClub(defId)->bool, isDiscardBs(item)->bool, onUnclassifiable }
+        // onUnclassifiable: 'unassigned'（默认，留未分配）| 'discard' | 'stop'（整批停）
+        // 不变量：四去向长度之和 === items.length（物品永不丢失，数量核对恒成立）
+        function classifyPackItems(items, ctx) {
+            const out = { toClub: [], toStorage: [], toSell: [], toUnassigned: [], stop: false };
+            let storageFree = ctx.storageFree;
+            const batchSeen = new Set();
+            for (const item of items) {
+                const defId = item.definitionId;
+                const alreadyOwned = ctx.inClub(defId) || batchSeen.has(defId);
+                batchSeen.add(defId);
+                if (ctx.sellAll) {
+                    out.toSell.push(item);
+                } else if (alreadyOwned) {
+                    if (ctx.sellDup && !(item.untradeableCount > 0)) {
+                        out.toSell.push(item);
+                    } else if (ctx.discardBs && ctx.isDiscardBs(item)) {
+                        out.toSell.push(item);
+                    } else if (item.rating >= ctx.storageMinRating && storageFree > 0) {
+                        out.toStorage.push(item);
+                        storageFree--;
+                    } else if (ctx.onUnclassifiable === 'discard') {
+                        out.toSell.push(item);
+                    } else if (ctx.onUnclassifiable === 'stop') {
+                        out.toUnassigned.push(item);
+                        out.stop = true;
+                    } else {
+                        out.toUnassigned.push(item);
+                    }
+                } else if (ctx.discardBs && ctx.isDiscardBs(item)) {
+                    out.toSell.push(item);
+                } else {
+                    out.toClub.push(item);
+                }
+            }
+            return out;
+        }
+
+        //PURE: 汇总统计（storeLoc: 1=俱乐部 2=仓库 3=出售 0=未分配）
+        function buildPackSummary(records) {
+            return records.reduce((acc, e) => {
+                if (e.storeLoc === 1) acc.clubCount++;
+                else if (e.storeLoc === 2) acc.storageCount++;
+                else if (e.storeLoc === 3) { acc.sellCount++; acc.sellCoins += e.discardValue || 0; }
+                else if (e.storeLoc === 0) acc.unassignedCount++;
+                if (e.isSpecial && e.isSpecial()) acc.specialCount++;
+                if (e.rating > acc.playerMaxRating) acc.playerMaxRating = e.rating;
+                if ((e.packCount || 0) > acc.packCount) acc.packCount = e.packCount;
+                return acc;
+            }, { clubCount: 0, storageCount: 0, sellCount: 0, sellCoins: 0, specialCount: 0, packCount: 0, playerMaxRating: 0, unassignedCount: 0 });
+        }
+
+        //PURE: 底部进度条文案（A 的 openedProgress + openedRewardPacks 合并形态）
+        function formatProgressText(stats, total, texts) {
+            const parts = [];
+            if (texts.prefix) parts.push(texts.prefix.replace("{done}", stats.done).replace("{total}", total));
+            if (stats.clubCount > 0) parts.push(texts.club + "+" + stats.clubCount);
+            if (stats.storageCount > 0) parts.push(texts.storage + "+" + stats.storageCount);
+            if (stats.sellCount > 0) parts.push(texts.sell + "+" + stats.sellCount + "(" + stats.sellCoins + texts.coin + ")");
+            if (stats.unassignedCount > 0) parts.push(texts.unassigned + "+" + stats.unassignedCount);
+            return parts.join(" ｜ ");
+        }
+
+        packs._cancelToken = null;
+        packs._bar = null;
+
+        // 底部进度条（fixed 底部，附"停止"按钮）
+        packs._ensureBar = (texts) => {
+            if (!packs._bar || !document.body.contains(packs._bar)) {
+                const bar = document.createElement("div");
+                bar.className = "fsu-packprogress";
+                Object.assign(bar.style, {
+                    position: "fixed", bottom: "0", left: "0", right: "0",
+                    background: "rgba(0,0,0,.88)", color: "#fff", padding: ".55rem 1rem",
+                    fontSize: "1rem", zIndex: "99999", display: "flex",
+                    justifyContent: "center", alignItems: "center", gap: "1rem"
+                });
+                const span = document.createElement("span");
+                span.id = "fsu-packprogress-text";
+                const stopBtn = document.createElement("button");
+                stopBtn.id = "fsu-packprogress-stop";
+                stopBtn.textContent = texts.stop;
+                Object.assign(stopBtn.style, {
+                    background: "#c0392b", color: "#fff", border: "none",
+                    padding: ".25rem .8rem", borderRadius: "4px", cursor: "pointer"
+                });
+                stopBtn.addEventListener("click", () => { if (packs._cancelToken) packs._cancelToken.cancelled = true; });
+                bar.appendChild(stopBtn);
+                bar.appendChild(span);
+                document.body.appendChild(bar);
+                packs._bar = bar;
+            }
+            return packs._bar;
+        };
+
+        packs._hideBar = () => {
+            if (packs._bar) { try { packs._bar.remove(); } catch (e) {} packs._bar = null; }
+        };
+
+        // 引擎专用收尾：只隐藏加载盾，不触碰取消令牌（与 hideLoader 解耦）
+        packs._finishLoader = () => {
+            try {
+                document.querySelector(".ut-click-shield").classList.remove("showing", "fsu-loading");
+                document.querySelector(".loaderIcon").style.display = "none";
+            } catch (e) {}
+        };
+
+        // 生产依赖注入（futweb 闭包内，引用 services/repositories/events/fy）
+        packs._makeDeps = () => {
+            const controller = cntlr.current();
+            const observeOnce = (obs) => new Promise((resolve) => {
+                obs.observe(controller, (e, t) => { e.unobserve(controller); resolve(t); });
+            });
+            return {
+                fy: fy,
+                controller: controller,
+                getUnassigned: () => observeOnce(services.Item.requestUnassignedItems()),
+                getPacks: (id) => _.filter(repositories.Store.myPacks.values(), { id: id }),
+                openPack: (pack) => observeOnce(pack.open()),
+                moveClub: (items) => observeOnce(services.Item.move(items, ItemPile.CLUB)),
+                moveStorage: (items) => observeOnce(services.Item.move(items, ItemPile.STORAGE, !0)),
+                discard: (items) => observeOnce(services.Item.discard(items)),
+                moveTransfer: (items) => observeOnce(services.Item.move(items, ItemPile.TRANSFER)),
+                getInClub: (defId) => events.getItemBy(2, { definitionId: defId, upgrades: null }, false, repositories.Item.club.items.values()).length > 0,
+                getStorageState: () => {
+                    const ratings = _.map(repositories.Item.storage.values(), 'rating');
+                    return {
+                        // 修复根因1：空仓库时 _.min([])=Infinity → 阈值归 0
+                        minRating: ratings.length ? _.min(ratings) : 0,
+                        free: 100 - repositories.Item.numItemsInCache(ItemPile.STORAGE)
+                    };
+                },
+                isDiscardBs: (item) => item.untradeableCount > 0 && !item.isSpecial() && (item.isBronzeRating() || item.isSilverRating()),
+                isSpecial: (item) => item.isSpecial(),
+                notify: (t, n) => events.notice(t, n),
+                changeLoadingText: (t, t2) => events.changeLoadingText(t, t2),
+                sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+                openResultPopup: (title, text, players, desc) => events.openPacksResultPopup(title, text, players, desc, true)
+            };
+        };
+
+        // 单包处理：开 → 分类 → 移入/出售（降级矩阵）→ 记录
+        // 返回 { opened:bool, failed:bool, fatal:bool, stop:bool }
+        packs.openOne = async (pack, index, options, deps, records) => {
+            const maxRetries = options.maxRetries || 3;
+            let openResult = null;
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    openResult = await deps.openPack(pack);
+                    if (openResult.success) break;
+                    const code = (openResult.error && openResult.error.code) || openResult.status;
+                    // 修复根因3：致命错误停止，网络/限流重试退避（A 的 rateLimited 行为）
+                    if (isFatalError(code)) return { fatal: true, code: code };
+                    if (attempt < maxRetries) await deps.sleep(nextRetryDelay(attempt, 1000));
+                } catch (e) {
+                    console.warn("[C-01] pack.open 异常", e);
+                    if (attempt < maxRetries) await deps.sleep(nextRetryDelay(attempt, 1000));
+                    else return { failed: true };
+                }
+            }
+            if (!openResult || !openResult.success) return { failed: true };
+
+            // revenue 上报（沿用 B 原逻辑）
+            try {
+                if (pack instanceof UTStoreItemPackEntity && pack && pack.isMyPack) services.User.getUser().decrementNumUnopenedPacks();
+                const logData = {
+                    [RevenueAnalytics.Key.CURRENCY]: GameCurrency.COINS,
+                    [RevenueAnalytics.Key.TYPE]: pack.dealType || "unknown",
+                    [RevenueAnalytics.Key.ID]: (pack.id || "").toString() || "unknown"
+                };
+                const sdk = unsafeWindow && unsafeWindow.services && unsafeWindow.services.revenueSDK;
+                if (sdk && sdk.initialized && typeof sdk.logEvent === "function") sdk.logEvent(RevenueAnalytics.Event.STORE_PACK_PURCHASED, logData);
+            } catch (e) { console.warn("[C-01] revenue 上报失败", e); }
+
+            const items = openResult.response.items;
+            const storage = deps.getStorageState();
+            const ctx = {
+                sellDup: !!options.sellDup,
+                sellAll: !!options.sellAll,
+                discardBs: !!(info.set && info.set.info_discardbs),
+                storageMinRating: storage.minRating,
+                storageFree: storage.free,
+                inClub: deps.getInClub,
+                isDiscardBs: deps.isDiscardBs,
+                onUnclassifiable: options.overfillMode || "unassigned"
+            };
+            // 修复根因2：分类不变量保证物品永不丢失 → 数量核对恒成立
+            const out = classifyPackItems(items, ctx);
+            if (out.stop) {
+                return { failed: true, stop: true };
+            }
+
+            const pushRecords = (list, storeLoc) => {
+                for (const it of list) {
+                    const copy = _.cloneDeep(it);
+                    copy.storeLoc = storeLoc;
+                    copy.packCount = index + 1;
+                    records.push(copy);
+                }
+            };
+
+            // 1) 新球员 → 俱乐部（失败：该包留未分配，继续下一包）
+            if (out.toClub.length > 0) {
+                try {
+                    const r = await deps.moveClub(out.toClub);
+                    if (!r.success) {
+                        console.warn("[C-01] moveClub 失败，物品留未分配", r);
+                        pushRecords(out.toClub, 0);
+                        return { failed: true, moveFail: "club" };
+                    }
+                    pushRecords(out.toClub, 1);
+                } catch (e) {
+                    console.warn("[C-01] moveClub 异常，物品留未分配", e);
+                    pushRecords(out.toClub, 0);
+                    return { failed: true, moveFail: "club" };
+                }
+            }
+
+            // 2) 重复球员 → SBC 仓库（失败：留未分配，继续）
+            if (out.toStorage.length > 0) {
+                try {
+                    const r = await deps.moveStorage(out.toStorage);
+                    if (r.success) {
+                        pushRecords(out.toStorage, 2);
+                    } else {
+                        console.warn("[C-01] moveStorage 失败，物品留未分配", r);
+                        pushRecords(out.toStorage, 0);
+                    }
+                } catch (e) {
+                    console.warn("[C-01] moveStorage 异常，物品留未分配", e);
+                    pushRecords(out.toStorage, 0);
+                }
+            }
+
+            // 3) 出售（discard 失败 → fallback 转会名单，沿用 B 逻辑；再失败留未分配）
+            if (out.toSell.length > 0) {
+                try {
+                    const r = await deps.discard(out.toSell);
+                    if (r.success) {
+                        pushRecords(out.toSell, 3);
+                    } else {
+                        console.warn("[C-01] discard 失败，fallback 转会名单", r);
+                        const fb = await deps.moveTransfer(out.toSell);
+                        if (fb.success) pushRecords(out.toSell, 3);
+                        else { console.warn("[C-01] fallback 转会也失败", fb); pushRecords(out.toSell, 0); }
+                    }
+                } catch (e) {
+                    console.warn("[C-01] discard 异常，fallback 转会名单", e);
+                    try {
+                        const fb = await deps.moveTransfer(out.toSell);
+                        if (fb.success) pushRecords(out.toSell, 3);
+                        else pushRecords(out.toSell, 0);
+                    } catch (e2) { pushRecords(out.toSell, 0); }
+                }
+            }
+
+            // 4) 未分配兜底（overfillMode=unassigned）：物品自然留在未分配，只记录
+            pushRecords(out.toUnassigned, 0);
+
+            return { opened: true };
+        };
+
+        // 主循环：前置检查 → 开包循环（令牌取消）→ finally 无条件汇总（修复根因4）
+        packs.open = async (options, deps) => {
+            const opts = Object.assign({
+                sellDup: false, sellAll: false, maxRetries: 3, overfillMode: "unassigned"
+            }, options);
+            deps = deps || packs._makeDeps();
+            const { packId, packName, packNum } = opts;
+            const records = [];
+            let packOpened = 0, cancelled = false, fatal = null;
+            const progress = { done: 0, clubCount: 0, storageCount: 0, sellCount: 0, sellCoins: 0, unassignedCount: 0 };
+
+            const texts = {
+                prefix: deps.fy(["openpack.progress.bottombar", "{done}", "{total}"]),
+                stop: deps.fy("openpack.progress.stop"),
+                club: deps.fy("openpack.progress.club"),
+                storage: deps.fy("openpack.progress.storage"),
+                sell: deps.fy("openpack.progress.sell"),
+                coin: deps.fy("openpack.progress.coins"),
+                unassigned: deps.fy("openpack.progress.unassigned")
+            };
+
+            // 前置检查：未分配球员（沿用 B 策略）
+            try {
+                const un = await deps.getUnassigned();
+                if (un.success && JSUtils.isObject(un.response)) {
+                    if (un.response.items.length > 0) {
+                        deps.notify(deps.fy("openpack.unassigned.notice"), 2);
+                        try { deps.controller.gotoUnassigned(); } catch (e) {}
+                        return { ok: false, reason: "unassigned" };
+                    }
+                } else {
+                    deps.notify(deps.fy(["openpack.openerror.notice", (un.error && un.error.code) || un.status]), 2);
+                    return { ok: false, reason: "fetch-unassigned-fail" };
+                }
+            } catch (e) {
+                deps.notify(deps.fy("openpack.unassigned.notice"), 2);
+                return { ok: false, reason: "unassigned" };
+            }
+
+            // 包数据核对
+            const allPacks = deps.getPacks(packId);
+            if (allPacks.length < packNum) {
+                deps.notify(deps.fy(["openpack.packnotenough.notice", packName, allPacks.length, packNum]), 2);
+                return { ok: false, reason: "not-enough" };
+            }
+            const targetPacks = allPacks.slice(0, packNum);
+
+            // 令牌 + 底部进度条
+            packs._cancelToken = { cancelled: false };
+            deps.changeLoadingText(["openpack.progress.loadertext1", packName]);
+            const bar = packs._ensureBar(texts);
+            bar.querySelector("#fsu-packprogress-text").textContent = formatProgressText(progress, targetPacks.length, texts);
+
+            try {
+                for (let i = 0; i < targetPacks.length; i++) {
+                    // 修复根因5：取消只读令牌，与 hideLoader 解耦
+                    if (packs._cancelToken.cancelled) { cancelled = true; break; }
+                    deps.changeLoadingText(["openpack.progress.loadertext1", packName], ["openpack.progress.loadertext2", i + 1, targetPacks.length]);
+
+                    const r = await packs.openOne(targetPacks[i], i, opts, deps, records);
+                    if (r.fatal) { fatal = r; break; }
+                    if (r.stop) break;
+                    if (r.opened) packOpened++;
+
+                    // 更新底部进度条（A 的 openedProgress 合并去向统计）
+                    const s = buildPackSummary(records);
+                    progress.done = i + 1;
+                    progress.clubCount = s.clubCount;
+                    progress.storageCount = s.storageCount;
+                    progress.sellCount = s.sellCount;
+                    progress.sellCoins = s.sellCoins;
+                    progress.unassignedCount = s.unassignedCount;
+                    bar.querySelector("#fsu-packprogress-text").textContent = formatProgressText(progress, targetPacks.length, texts);
+
+                    if (i < targetPacks.length - 1) await deps.sleep(500 + Math.floor(Math.random() * 1000));
+                }
+            } finally {
+                // 修复根因4：无条件汇总（成功/失败/取消都弹）
+                packs._finishLoader();
+                const stats = buildPackSummary(records);
+                const sorted = _.orderBy(records, ["rareflag", "rating"], ["desc", "desc"]);
+                const popupTitle = deps.fy(["openpack.result.popupt", packName]);
+                const popupText = deps.fy(["openpack.result.popupm3",
+                    stats.packCount, Math.max(0, targetPacks.length - packOpened),
+                    stats.clubCount, stats.storageCount, stats.sellCount, (stats.sellCoins || 0).toLocaleString(),
+                    stats.specialCount, stats.playerMaxRating, stats.unassignedCount]);
+                // 修复根因4b：结果弹窗全量展示（scrollable）
+                deps.openResultPopup(popupTitle, popupText, sorted, null);
+
+                progress.done = packOpened;
+                bar.querySelector("#fsu-packprogress-text").textContent = formatProgressText(progress, targetPacks.length, texts);
+                setTimeout(() => { packs._hideBar(); }, 6000);
+                packs._cancelToken = null;
+            }
+            return { ok: !fatal && !cancelled, opened: packOpened, cancelled: cancelled, fatal: fatal };
+        };
+
+        // 适配器：保持旧签名（调用点零改动），路由到新引擎
+        events.openPacks = async (packId, packName, packNum, sellDup, sellAll) => {
+            return packs.open({ packId: packId, packName: packName, packNum: packNum, sellDup: sellDup, sellAll: sellAll }, null);
+        };
     }
 
     function futgg(){
