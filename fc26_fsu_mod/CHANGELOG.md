@@ -9,6 +9,134 @@
 
 ---
 
+## v26.10-jacyi.8 (2026-08-16)
+
+> 智能填充单按钮 — 合并全部填充/完成按钮为一个「智能填充」：填充 + 自动提交一体，条件分流 + Futbin 模板优先 + 填充前菜单
+
+### 背景
+
+SBC 阵容页有 6 个填充/完成类按钮（一键填充(优先重复)、重复球员填充、阵容补全、SBC方案填充、一键完成、AUTO SOLVE），功能重叠且文案误导（"一键填充(优先重复)"实际是 jacyi.7 的引擎入口）。用户要求只保留一个「智能填充」：填充前弹选项菜单（吸收 fodder 风格，per-SBC 记忆），按条件分流（基本条件→本地算法；特殊条件→Futbin 模板优先→引擎兜底），成功后自动提交。
+
+### 修改内容
+
+#### 1. [C-06] 智能填充模块（events.smartFill，fill.runForCurrent 之后）
+- `runForCurrent(controller)`：点击 → 弹填充选项菜单 → 分流 → 落阵 → `submitChallengeFlow` 自动提交
+- 分流：`classifySbcMode`（基本集：品质/稀有度/TOTW/最低评分/**阵容总评(均分)** → `"basic"` 本地引擎快速填充；化学/俱乐部/联赛/国籍/精确评分/位置/未知 → `"complex"` 模板优先。均分归 basic：本地 ratingCombo 可直接求解，如"均分84+TOTW×1+11人"无需外部模板）
+- 模板路径：`getTemplate({challenge, setInteractionState:noop}, type, sId)` 伪事件调用，以 `templatePlan` 长度对比判定成败（getTemplate 零改动）；失败自动引擎兜底 + `smartfill.template.fail` 提示
+- 方案链接/ID 输入（正则复用原 fillSquadBtn）：UUID → type 3，纯数字 → type 2，直接模板跳过分流
+- per-SBC 记忆：GM key `SBCFillOptions`（`challengeId#setId` → 规范化选项），菜单"记住此SBC选项"勾选才写
+- 菜单选项：球员来源（未分配/队内仓库）、仅不可交易、优先重复（默认开）、仅普通卡、评分范围、价格范围、复杂SBC优先Futbin模板（默认开）、方案链接/ID、记住选项
+
+#### 2. [C-05] 引擎扩展（fill.run opts，全可选缺省零变化）
+- 池预过滤：复用 `filterCandidates`（评分/价格/普通卡/不可交易一次到位）
+- `poolSource:"storage"`：池传 undefined → `events.getItemBy` 自动用 俱乐部+仓库（replaceData 空值语义 L841）
+- `preferDuplicates`：getItemBy 返回稳定排序（重复球员在前），非过滤；storage 模式池规模判定跳过（不误报 fill.error.pool）
+- `simplifyReqs` 提取（旧内联循环逐行等价），`fill.run` 复用
+
+#### 3. [C-06] 纯函数层（//PURE:）
+- `simplifyReqs` / `classifySbcMode`（分流判定）
+- `normalizeFillOptions`（评分钳 40-99、价格 ≥0、min>max 交换、0/空=不限、布尔强转）/ `loadFillOptions` / `saveFillOptions`（store 不可变）
+- `resolveSmartFillEnabled`（sbc_smartfill 显式优先；未定义默认开，存量旧开关兼容）
+
+#### 4. 按钮合并（UTSBCSquadOverviewViewController / DetailPanel）
+- 删除：fillSquadBtn（方案填充）、dupFillBtn（重复球员填充）、squadCmplBtn（阵容补全，含评分弹窗）、autoFillBtn 的 tipsType 段（无消费方）、quicklyBtn（一键完成）、solveBtn（AUTO SOLVE）
+- 新增：`smartFillBtn`（文案"智能填充"，闸门 `resolveSmartFillEnabled`，任何 SBC 可用）→ exchangeElement 前
+- 布局 mini 化条件改为 smartFillBtn 存在；批量按钮（每日一键清空/一键三连）改挂 quickOther 末尾
+- hideLoader 模板恢复逻辑 fillSquadBtn → smartFillBtn（可选链防抖）
+- **保留**：加入流程/流程管理（quickOther 栏）、快捷任务按钮、fastsbc 缓存自动写入（挑战列表一键三连/未分配 Fast 区数据源）、hasChemistry 计算（L6568/L7101/L11119 仍消费）
+
+#### 5. 设置面板
+- setfield sbc 列表：删 template/templatemode/dupfill/autofill/squadcmpl，加 smartfill
+- solveBox（AUTO SOLVE 参数）→ 替换为「智能填充默认选项」区块（sbcFill_poolSource/minRating/maxRating/minPrice/maxPrice/preferDuplicates/untradeableOnly/commonsOnly/useTemplate，0=不限）
+- solver 模块代码保留（`_pendingRs` 被 quickGreedy/fastSBC 读取，删不得）；filterCandidates 被智能填充复用
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`
+  - `[C-06]` 块（[C-05] 之后）— smartFill 模块 + 纯函数
+  - `[C-05]` fill.run — opts 扩展 + simplifyReqs
+  - 按钮区（15213-15480 附近）— 合并为 smartFillBtn
+  - 显示区（15526-15566 附近）— 挂载/mini 化
+  - quickOther 栏（3643 附近）— 删一键完成/AUTO SOLVE，批量按钮改挂
+  - hideLoader（1125 附近）— 模板恢复逻辑
+  - 设置面板（8156 附近）— sbcFill 区块；setfield L86
+  - `info.localization` — smartfill.* + set.sbcFill.* 三语键（26 个）
+- 新增测试：`test_smart_classify.js`（19）/ `test_smart_options.js`（26）
+- 更新：`test_fill_flow.js`（19，新增 7 个 opts 用例）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. 阵容页只出现一个「智能填充」按钮（原 6 个按钮消失）
+2. 点击 → 弹填充选项菜单（选项与上次保存一致）→ 确认 → 填充 + 自动提交
+3. 基本 SBC（均分84 + TOTW×1 + 11人 / 84+球员 + TOTW×1）→ 本地算法快速填充成功（不拉模板）
+4. 复杂 SBC（联赛+国籍+化学）→ Futbin 模板优先；断网/无方案 → "template.fail" → 引擎兜底成功
+5. 菜单记忆：改"仅不可交易"并记住 → 退出重进该 SBC 预载；进其他 SBC 不受影响
+6. 方案链接/ID 粘贴 → 直接模板填充
+7. 兼容：存量 `sbc_dupfill=true && sbc_autofill=false` 配置下按钮仍显示；设置面板只有"智能填充"一个开关
+8. 回归：一键三连/一键清空、未分配 Fast 区、加入流程/流程管理、快捷任务按钮、ignoreBtn、bulkBuyBtn
+9. 设置面板：智能填充默认选项区块生效（默认评分范围 0=不限）
+
+---
+
+## v26.10-jacyi.9 (2026-08-16)
+
+> 额外优化1 — 开包引擎三修复：金币/组合包奖励自动兑换（照 fodder 实证 API）、停止按钮修复、进度文案重构 + 瓦片按钮精简
+
+### 背景
+
+需求文档「优化0816.md 额外优化1」：① 组合包开出金币/内层包奖励时无法自动兑换 → 物品无法完全分配、整批中断（停止按钮也失效）；② 全部出售进度提示"出售+12"文案不对；③ 组合包瓦片按钮太多，只留"批量开包 + 打开扩展包"。
+
+**关键逆向**：抓取 fodder client.core.js 实证——EA 原生 `services.Item.redeem(item)` 是兑换 API；A 脚本对开包 items 按 `type === ItemType.MISC("misc")` 分入 redeem 桶，逐条调用 redeem（返回 `{success}`），失败仅日志不中断。金币入账/内层包进"我的包"由 EA 完成。
+
+### 修改内容
+
+#### 1. [C-01] 兑换（五去向）
+- `classifyPackItems` 增加第 5 去向 `toRedeem`：判定链最前插 picks（`isPlayerPickItem()` → toUnassigned，本轮保守不处理）与 misc（`type === "misc"` → toRedeem，sellAll 下也不卖 misc）；**不变量升级五去向和 === items.length**；batchSeen 移到分流后（misc defId 不污染去重）
+- `openOne` 新增兑换桶：逐条 `deps.redeem(item)`（=`services.Item.redeem`，observable/promise 双形态 + 方法缺失防御），成功记 storeLoc=4，失败记未分配不中断批
+- **修复 moveClub 失败提前 return 丢记录**：toStorage/toSell/toRedeem 记录全落，返回 `{failed:true, moveFail:"club"}` 但批继续
+- 未分配兜底对无法分类条目（无 type/非球员）console.warn 输出结构供实测反馈
+
+#### 2. [C-01] 停止按钮修复
+- `observeOnce` 60s 超时（`PACK_OBSERVE_TIMEOUT_MS`）+ observe 异常兜底（controller 切换不再永久挂起）→ 超时/异常**不重试**（防双开），物品留未分配区由下次批量前置检查兜住
+- `openOne` 全流程取消检查点（入口/每次 openPack 后/重试 sleep 前后/各动作前）→ `{cancelled:true}`
+- `sleep` 可中断（200ms 轮询令牌，取消提前返回）；主循环包间 sleep 消费取消
+
+#### 3. [C-01] 进度文案重构
+- `formatProgressText` 模板句式：`开包 3/10 ｜ 发送俱乐部 12 个 ｜ 放入SBC仓库 8 个 ｜ 出售物品 5 个（金币 3,200） ｜ 兑换 2 个 ｜ 未分配 1 个`（金币千分位，X=0 隐藏对应段）
+- `buildPackSummary` 加 redeemCount；结果弹窗 popupm3 追加"兑换 %10 个"
+
+#### 4. [C-09] 瓦片按钮精简 + 弹窗红色规则
+- 瓦片删 sellAllBtn/sellDupBtn，只留「批量开包 + 打开扩展包」各 1/2 宽；注入闸门（isPlayers||tradable）不动
+- 批量开包点击统一走确认弹窗（数量 + 模式三选 + `tradable` 参数）
+- 弹窗红色规则三态：`danger = sellAll || (sellDup && !tradable)` → 全红 #c0392b；不可交易包选出售类时显示红色警示行（openpack.popup.untradable.warn）
+- `info_sellall` 开关移除（setfield.info 删"sellall"，两级确认由弹窗模式选择取代）
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`：[C-01] 引擎（L16387-16860 区域：常量/纯函数/_makeDeps/openOne/open 主循环）、瓦片按钮区（L9824-9920）、确认弹窗（L13829-13950）、i18n（L1595-1630）、setfield（L86）
+- 更新：`test_classify_pack.js`（29，新增 10 个五去向用例）/ `test_pack_summary.js`（13，模板句式断言重写）
+- 新增：`test_pack_flow.js`（10，openOne 流程：redeem 成功/失败/异常、moveClub 不丢记录、超时不重试、取消检查点、sellAll 下 misc 不误卖）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. 开含金币奖励的组合包（普通模式）→ 进度条出现"兑换 1 个"，金币入账，同包球员正常分配
+2. 开含内层包奖励的组合包 → 兑换后"我的包"出现内层包，批不中断
+3. 全部出售模式开组合包 → 文案"出售物品 X 个（金币 xxxx）"+"兑换 X 个"，无"出售+12"
+4. 停止按钮：开包挂起时点停止 → 60s 内中断（或立即）；汇总弹窗展示已开部分
+5. 瓦片：仅"批量开包 + 打开扩展包"各半宽；弹窗模式三选正常
+6. 弹窗红色规则：不可交易包选"出售重复/全部出售"变红 + 警示行；可交易包仅"全部出售"红
+7. 三语言切换后新文案正确；设置页无"全部出售"开关残留
+8. 若实测发现批量开包"莫名中断"：第一嫌疑是运行中 EA 触发了 hideLoader（其仍会置取消令牌，jacyi.1 有意设计）
+9. 全量回归：`bash fc26_fsu_mod/pre-check.sh`（228 个测试）
+
+### 已知边界（后续迭代）
+
+- picks（球员选择卡）本轮留未分配（A 脚本走专门 confirmPlayerPickItemSelection 流程）
+- 不可交易混合包瓦片不注入"批量开包"（[C-05] 安全闸门，可单独放开）
+- misc 判定依赖 EA 字段形态（fodder 实证有效）；无法分类条目有结构诊断 warn，实测反馈即可修正
+
+---
+
 ## v26.10-jacyi.7 (2026-08-16)
 
 > AUTO SOLVE 2.0 — 通用 SBC 填充引擎：融合所有填充算法，按需求类型自动路由，任何 SBC 都能填充

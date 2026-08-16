@@ -22,14 +22,20 @@ const assert = require('assert');
 // ===== 待测函数（//PURE: 复制自 fsu-mod.c.user.js [C-01]）=====
 //PURE: 包内物品分类（核心决策，副作用全部经 ctx 注入）
 // ctx: { sellDup, sellAll, discardBs, storageMinRating, storageFree,
-//        inClub(defId)->bool, isDiscardBs(item)->bool, onUnclassifiable }
+//        inClub(defId)->bool, isDiscardBs(item)->bool, onUnclassifiable,
+//        isPick(item)->bool, isRedeemable(item)->bool }
 // onUnclassifiable: 'unassigned'（默认，留未分配）| 'discard' | 'stop'（整批停）
-// 不变量：四去向长度之和 === items.length（物品永不丢失，数量核对恒成立）
+// 26.10-jacyi.9 [C-01] 五去向：+ toRedeem（金币/内层包等 misc 条目）；picks → toUnassigned
+// 不变量：五去向长度之和 === items.length（物品永不丢失，数量核对恒成立）
 function classifyPackItems(items, ctx) {
-    const out = { toClub: [], toStorage: [], toSell: [], toUnassigned: [], stop: false };
+    const out = { toClub: [], toStorage: [], toSell: [], toRedeem: [], toUnassigned: [], stop: false };
     let storageFree = ctx.storageFree;
     const batchSeen = new Set();
     for (const item of items) {
+        // ① 球员选择卡（本轮不处理，留未分配）
+        if (ctx.isPick && ctx.isPick(item)) { out.toUnassigned.push(item); continue; }
+        // ② misc 条目（金币/内层包等）→ 兑换桶（在 sellAll 判断前，misc 不可卖）
+        if (ctx.isRedeemable && ctx.isRedeemable(item)) { out.toRedeem.push(item); continue; }
         const defId = item.definitionId;
         const alreadyOwned = ctx.inClub(defId) || batchSeen.has(defId);
         batchSeen.add(defId);
@@ -68,6 +74,7 @@ function makeItem(defId, rating, opts = {}) {
         id: opts.id || `item-${_seq}`,
         definitionId: defId,
         rating: rating,
+        type: opts.type, // 26.10-jacyi.9：misc 判定字段（默认 undefined = 旧行为）
         untradeableCount: opts.untradeable ? 1 : 0,
         discardValue: opts.discardValue || 0,
         isSpecial: () => !!opts.special,
@@ -93,13 +100,16 @@ function makeCtx(overrides = {}) {
                     typeof item.isBronzeRating === "function" && (item.isBronzeRating() || (typeof item.isSilverRating === "function" && item.isSilverRating()));
             } catch (e) { return false; }
         },
+        //26.10-jacyi.9 [C-01] 五去向分流判定（与生产同构）
+        isPick: () => false,
+        isRedeemable: (item) => item.type === "misc",
         onUnclassifiable: 'unassigned'
     }, overrides);
 }
 
 function assertInvariant(out, items) {
-    assert.strictEqual(out.toClub.length + out.toStorage.length + out.toSell.length + out.toUnassigned.length, items.length,
-        `不变量破坏: 分类和 ${out.toClub.length + out.toStorage.length + out.toSell.length + out.toUnassigned.length} !== ${items.length}`);
+    assert.strictEqual(out.toClub.length + out.toStorage.length + out.toSell.length + out.toRedeem.length + out.toUnassigned.length, items.length,
+        `不变量破坏: 分类和 ${out.toClub.length + out.toStorage.length + out.toSell.length + out.toRedeem.length + out.toUnassigned.length} !== ${items.length}`);
 }
 
 // ===== 测试 =====
@@ -303,6 +313,96 @@ test('⑪d 混合包：物品重复+仓库有最低分（40+）→ toUnassigned�
     const items = [makeNonPlayerItem('consumable-1')];
     const out = classifyPackItems(items, makeCtx({ clubSet: new Set(['consumable-1']), storageMinRating: 40, storageFree: 10 }));
     assert.strictEqual(out.toUnassigned.length, 1);
+    assertInvariant(out, items);
+});
+
+// --- ⑫ 26.10-jacyi.9 五去向：misc 兑换桶 ---
+test('⑫ misc 金币条目（type=misc 无 defId/rating）→ toRedeem', () => {
+    const items = [makeItem(undefined, 0, { type: "misc" })];
+    const out = classifyPackItems(items, makeCtx());
+    assert.strictEqual(out.toRedeem.length, 1);
+    assert.strictEqual(out.toClub.length + out.toSell.length + out.toStorage.length, 0, 'misc 不进任何球员去向');
+    assertInvariant(out, items);
+});
+
+test('⑫b misc 内层包条目 → toRedeem', () => {
+    const items = [makeItem('inner-pack-1', 0, { type: "misc" })];
+    const out = classifyPackItems(items, makeCtx());
+    assert.strictEqual(out.toRedeem.length, 1);
+    assertInvariant(out, items);
+});
+
+test('⑫c sellAll=true：球员 → toSell，misc → toRedeem（不卖金币）', () => {
+    const items = [
+        makeItem('p1', 84),
+        makeItem('p2', 80),
+        makeItem('coins', 0, { type: "misc" }),
+        makeItem('inner', 0, { type: "misc" })
+    ];
+    const out = classifyPackItems(items, makeCtx({ sellAll: true }));
+    assert.strictEqual(out.toSell.length, 2, '球员全部出售');
+    assert.strictEqual(out.toRedeem.length, 2, 'misc 全部兑换（不可卖）');
+    assertInvariant(out, items);
+});
+
+test('⑫d 混合包组合：新球员+重复+仓库满+misc → 各桶正确', () => {
+    const items = [
+        makeItem('new1', 84),                              // → club
+        makeItem('dup1', 82),                              // 重复+仓库空 → storage
+        makeItem('dup2', 84),                              // 重复+仓库满 → unassigned
+        makeItem('coins', 0, { type: "misc" }),            // → redeem
+        makeItem('inner', 0, { type: "misc" })             // → redeem
+    ];
+    const out = classifyPackItems(items, makeCtx({
+        clubSet: new Set(['dup1', 'dup2']), storageMinRating: 75, storageFree: 1
+    }));
+    assert.strictEqual(out.toClub.length, 1);
+    assert.strictEqual(out.toStorage.length, 1);
+    assert.strictEqual(out.toUnassigned.length, 1);
+    assert.strictEqual(out.toRedeem.length, 2);
+    assertInvariant(out, items);
+});
+
+test('⑫e 负例：type="player" 等非 misc → 不进 toRedeem', () => {
+    const items = [makeItem('p1', 80, { type: "player" })];
+    const out = classifyPackItems(items, makeCtx());
+    assert.strictEqual(out.toRedeem.length, 0);
+    assert.strictEqual(out.toClub.length, 1, '正常球员流程');
+    assertInvariant(out, items);
+});
+
+test('⑫f 回归：type 缺失 → 行为与旧版一致', () => {
+    const items = [makeItem('new1', 84), makeItem('dup1', 82)];
+    const out = classifyPackItems(items, makeCtx({ clubSet: new Set(['dup1']), storageMinRating: 75, storageFree: 10 }));
+    assert.strictEqual(out.toRedeem.length, 0);
+    assert.strictEqual(out.toClub.length, 1);
+    assert.strictEqual(out.toStorage.length, 1);
+    assertInvariant(out, items);
+});
+
+test('⑫g pick（球员选择卡）优先于 misc → toUnassigned', () => {
+    const items = [makeItem('pick1', 0, { id: 'pick1', type: "misc" })];
+    const out = classifyPackItems(items, makeCtx({ isPick: (it) => it.id === 'pick1' }));
+    assert.strictEqual(out.toUnassigned.length, 1, 'pick 进未分配（即便 type=misc）');
+    assert.strictEqual(out.toRedeem.length, 0);
+    assertInvariant(out, items);
+});
+
+test('⑫h 两个同 defId 的 misc → 都进 toRedeem（batchSeen 不误伤）', () => {
+    const items = [makeItem('inner', 0, { type: "misc" }), makeItem('inner', 0, { type: "misc" })];
+    const out = classifyPackItems(items, makeCtx());
+    assert.strictEqual(out.toRedeem.length, 2);
+    assertInvariant(out, items);
+});
+
+test('⑫i onUnclassifiable=stop + misc → misc 仍 toRedeem（stop 仅由球员触发）', () => {
+    const items = [
+        makeItem('dup1', 82),
+        makeItem('coins', 0, { type: "misc" })
+    ];
+    const out = classifyPackItems(items, makeCtx({ clubSet: new Set(['dup1']), storageFree: 0, onUnclassifiable: 'stop' }));
+    assert.strictEqual(out.stop, true, '重复球员触发 stop');
+    assert.strictEqual(out.toRedeem.length, 1, 'misc 不受 stop 影响');
     assertInvariant(out, items);
 });
 

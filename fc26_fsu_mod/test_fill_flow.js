@@ -270,13 +270,11 @@ algorithms.verifyFallback = async (ctx, deps) => {
     return { filled: result, status: "ok", reason: null };
 };
 
-// ===== 引擎主流程（复制自 C，deps 注入）=====
-async function fillRun(challenge, opts, deps) {
-    const o = Object.assign({ algorithm: "auto" }, opts);
+//PURE: EA 需求对象数组 → 简化形（复制自 C）
+function simplifyReqs(ers) {
     const reqs = [];
     try {
-        const ers = (challenge && challenge.eligibilityRequirements) || [];
-        for (const er of ers) {
+        for (const er of (ers || [])) {
             reqs.push({
                 key: er.getFirstKey ? er.getFirstKey() : er.key,
                 value: er.getValue ? er.getValue() : er.value,
@@ -284,9 +282,66 @@ async function fillRun(challenge, opts, deps) {
             });
         }
     } catch (e) {}
+    return reqs;
+}
+
+//PURE: A 风格候选过滤（复制自 C solver 块；smartFill 池预过滤复用）
+function filterCandidates(items, options, helpers) {
+    helpers = helpers || {};
+    const isSpecial = helpers.isSpecial || ((it) => !!(it.isSpecial && it.isSpecial()));
+    const isUntradeable = helpers.isUntradeable || ((it) => it.untradeableCount > 0);
+    const filtered = items.filter((it) => {
+        const rating = it.rating || 0;
+        if (options.minRating != null && rating < options.minRating) return false;
+        if (options.maxRating != null && rating > options.maxRating) return false;
+        if (options.minPrice != null && (it.price || 0) < options.minPrice) return false;
+        if (options.maxPrice != null && (it.price || 0) > options.maxPrice) return false;
+        if (options.commonsOnly && isSpecial(it)) return false;
+        if (options.untradeableOnly && !isUntradeable(it)) return false;
+        return true;
+    });
+    const unit = options.unitCoins ? (it) => it.price || 0 : (it) => it.rating || 0;
+    return filtered.sort((a, b) => unit(a) - unit(b));
+}
+
+// ===== 引擎主流程（复制自 C，deps 注入）=====
+async function fillRun(challenge, opts, deps) {
+    const o = Object.assign({ algorithm: "auto" }, opts);
+    const reqs = simplifyReqs((challenge && challenge.eligibilityRequirements) || []);
     const parsed = parseRequirements(reqs, { teamLinks: deps.getTeamLinks ? deps.getTeamLinks() : null });
     const totalSlots = (challenge && challenge.squad && challenge.squad.getNumOfRequiredPlayers) ? challenge.squad.getNumOfRequiredPlayers() : 11;
-    const pool = deps.pool();
+    // smartFill 选项：池预过滤（评分/价格/普通卡/不可交易）+ 数据源 + 优先重复
+    let pool = deps.pool();
+    let getItemBy = deps.getItemBy;
+    if (o.minRating != null || o.maxRating != null || o.minPrice != null || o.maxPrice != null || o.commonsOnly || o.untradeableOnly) {
+        pool = filterCandidates(pool || [], {
+            minRating: o.minRating, maxRating: o.maxRating,
+            minPrice: o.minPrice, maxPrice: o.maxPrice,
+            commonsOnly: o.commonsOnly, untradeableOnly: o.untradeableOnly
+        }, {
+            isSpecial: (it) => !!(it.isSpecial && it.isSpecial()),
+            isUntradeable: (it) => it.untradeableCount > 0
+        });
+    }
+    if (o.poolSource === "storage") {
+        // 数据源切换：池传 undefined → events.getItemBy 自动用 俱乐部+仓库（replaceData 空值语义）
+        pool = null;
+        const orig = getItemBy;
+        getItemBy = (crit, p, rd) => orig(crit, p == null ? undefined : p, rd);
+    }
+    if (o.preferDuplicates) {
+        // 优先重复：稳定排序（重复球员在前），非过滤
+        const orig = getItemBy;
+        getItemBy = (crit, p, rd) => {
+            const res = orig(crit, p, rd) || [];
+            return res.slice().sort((a, b) => {
+                const da = !!(a.isDuplicate && a.isDuplicate()) ? 0 : 1;
+                const db = !!(b.isDuplicate && b.isDuplicate()) ? 0 : 1;
+                return da - db;
+            });
+        };
+    }
+    if (getItemBy !== deps.getItemBy) deps = Object.assign({}, deps, { getItemBy: getItemBy });
     const forced = o.algorithm === "legacy" ? "legacy" : (o.algorithm === "fodder" ? "fodder" : "auto");
     const chain = buildChain(parsed.flags, forced);
     const ctx = {
@@ -318,7 +373,9 @@ async function fillRun(challenge, opts, deps) {
     }
     let ok = filled.length >= totalSlots;
     if (ok && deps.virtualMeets) ok = deps.virtualMeets(challenge, filled);
-    const reason = ok ? null : classifyFailure(attempts, parsed.flags, pool.length, totalSlots);
+    // storage 模式 pool 为 null：池规模判定跳过
+    const poolSize = pool ? pool.length : Infinity;
+    const reason = ok ? null : classifyFailure(attempts, parsed.flags, poolSize, totalSlots);
     return { ok: ok, filled: filled, reason: reason, algorithm: chain.join("+"), attempts: attempts };
 }
 
@@ -366,6 +423,7 @@ function makeDeps(pool, extra) {
                 if (k === "PLAYER_MIN_OVR") { if (!players.every(p => p.rating >= v)) return false; continue; }
                 if (k === "CLUB_ID") { if (!players.some(p => p.teamId === v)) return false; continue; }
                 if (k === "PLAYER_EXACT_OVR") { if (!players.some(p => p.rating === v)) return false; continue; }
+                if (k === "PLAYER_RARITY") { if (!players.some(p => p.rareflag === v)) return false; continue; }
             }
             return players.length >= (challenge.squad.getNumOfRequiredPlayers());
         },
@@ -557,6 +615,120 @@ async function test(name, fn) {
         const pool = Array.from({ length: 12 }, (_, i) => makePlayer(80));
         const deps = makeDeps(pool);
         const r = await fillRun(makeChallenge([], 11), {}, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.length, 11);
+    });
+
+    // ===== 用户场景：基本条件本地快速填充（均分 + TOTW + 数量）=====
+    await test('均分84 + TOTW×1 + 11人 → 本地链填充成功（无外部模板）', async () => {
+        const pool = [
+            makePlayer(86, { rareflag: 1 }), // TOTW
+            ...Array.from({ length: 12 }, (_, i) => makePlayer(84 + (i % 3)))
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([
+            { key: "TEAM_RATING", value: 84, count: 1 },
+            { key: "PLAYER_RARITY", value: 1, count: 1 },
+            { key: "PLAYER_MIN_OVR", value: 80, count: 11 }
+        ], 11), {}, deps);
+        assert.strictEqual(r.ok, true, '本地引擎应直接求解成功');
+        assert.strictEqual(r.filled.length, 11);
+        assert.ok(r.filled.some(p => p.rareflag === 1), 'TOTW 球员在场');
+        assert.ok(r.filled.every(p => p.rating >= 80), '全部满足最低评分');
+        assert.ok(r.algorithm.indexOf("ratingCombo") >= 0, 'ratingCombo 在链中（均分路由）');
+    });
+
+    await test('纯均分 SBC（无 TOTW）→ ratingCombo 单独求解', async () => {
+        const pool = Array.from({ length: 12 }, (_, i) => makePlayer(80 + (i % 4)));
+        const deps = makeDeps(pool, { getRatingPlayers: () => pool.slice(0, 11) });
+        const r = await fillRun(makeChallenge([
+            { key: "TEAM_RATING", value: 82, count: 1 }
+        ], 11), {}, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.algorithm.split("+")[0], "ratingCombo", 'ratingCombo 链首');
+    });
+
+    // ===== [C-05] smartFill 选项（v26.10-jacyi.8）=====
+    await test('minRating 过滤：低于下限的球员不进池', async () => {
+        const pool = [
+            ...Array.from({ length: 4 }, (_, i) => makePlayer(80 + i)), // 80-83 被过滤
+            ...Array.from({ length: 12 }, (_, i) => makePlayer(86 + (i % 3))) // 86-88 ×12 命中
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 75, count: 11 }], 11), { minRating: 85 }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.length, 11);
+        assert.ok(r.filled.every(p => p.rating >= 85), '全部 ≥85');
+    });
+
+    await test('maxRating 过滤：高于上限的球员不进池', async () => {
+        const pool = [
+            ...Array.from({ length: 12 }, (_, i) => makePlayer(82 + (i % 7))), // 82-88 ×12 命中
+            makePlayer(95) // 被排除
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 75, count: 11 }], 11), { maxRating: 88 }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.ok(r.filled.every(p => p.rating <= 88), '全部 ≤88（95 分被排除）');
+    });
+
+    await test('组合过滤：仅普通卡 + 仅不可交易 + 价格区间', async () => {
+        const pool = [
+            makePlayer(84, { isSpecial: () => true, untradeableCount: 1, price: 3000 }),   // special → 排除
+            makePlayer(85, { isSpecial: () => false, untradeableCount: 0, price: 3000 }),  // 可交易 → 排除
+            makePlayer(86, { isSpecial: () => false, untradeableCount: 1, price: 500 }),   // 价格过低 → 排除
+            makePlayer(87, { isSpecial: () => false, untradeableCount: 1, price: 9000 }),  // 价格过高 → 排除
+            ...Array.from({ length: 11 }, (_, i) => makePlayer(88, { isSpecial: () => false, untradeableCount: 1, price: 3000 + i * 100 }))
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 75, count: 11 }], 11),
+            { commonsOnly: true, untradeableOnly: true, minPrice: 2000, maxPrice: 5000 }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.length, 11);
+        assert.ok(r.filled.every(p => !p.isSpecial()), '无特殊卡');
+        assert.ok(r.filled.every(p => p.untradeableCount > 0), '全部不可交易');
+        assert.ok(r.filled.every(p => p.price >= 2000 && p.price <= 5000), '价格在区间内');
+    });
+
+    await test('preferDuplicates：重复球员优先被选中', async () => {
+        const pool = [
+            ...Array.from({ length: 11 }, (_, i) => makePlayer(82, { isDuplicate: () => false })),
+            makePlayer(82, { isDuplicate: () => true }),
+            makePlayer(82, { isDuplicate: () => true }),
+            makePlayer(82, { isDuplicate: () => true })
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 80, count: 11 }], 11), { preferDuplicates: true }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.filter(p => p.isDuplicate()).length, 3, '3 个重复球员全部优先选中');
+    });
+
+    await test('preferDuplicates 关闭 → 无重复偏好（回归）', async () => {
+        const pool = [
+            ...Array.from({ length: 11 }, (_, i) => makePlayer(80, { isDuplicate: () => false })),
+            makePlayer(80, { isDuplicate: () => true })
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 75, count: 11 }], 11), { preferDuplicates: false }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.filter(p => p.isDuplicate()).length, 0, '池末重复卡不被优先（按原顺序取）');
+    });
+
+    await test('poolSource storage → getItemBy 收到 undefined 池参数', async () => {
+        const pool = Array.from({ length: 12 }, (_, i) => makePlayer(80));
+        let lastPoolArg = "not-called";
+        const deps = makeDeps(pool, {
+            getItemBy: (criteria, replaceData) => { lastPoolArg = replaceData; return pool.filter((it) => matchItem(it, criteria)); }
+        });
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 75, count: 11 }], 11), { poolSource: "storage" }, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(lastPoolArg, undefined, '池参数为 undefined → 引擎自动用 俱乐部+仓库');
+    });
+
+    await test('无 opts → 与旧行为一致（回归）', async () => {
+        const pool = Array.from({ length: 12 }, (_, i) => makePlayer(80 + (i % 4)));
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([{ key: "PLAYER_MIN_OVR", value: 80, count: 11 }], 11), {}, deps);
         assert.strictEqual(r.ok, true);
         assert.strictEqual(r.filled.length, 11);
     });
