@@ -1612,6 +1612,18 @@
             "openpack.mode.normal":["普通批量","普通批量","Normal"],
             "openpack.mode.selldup":["出售重复","出售重複","Sell Dupes"],
             "openpack.mode.sellall":["全部出售","全部出售","Sell All"],
+            "set.solve.title":["AUTO SOLVE 求解","AUTO SOLVE 求解","AUTO SOLVE"],
+            "set.solve.algorithm":["求解算法","求解演算法","Solve algorithm"],
+            "set.solve.algorithm.legacy":["B 旧算法","B 舊演算法","Legacy (B)"],
+            "set.solve.algorithm.fodder":["新算法（A风格）","新演算法（A風格）","Fodder-style"],
+            "set.solve.count":["求解次数","求解次數","Solve count"],
+            "set.solve.minRating":["最低评分","最低評分","Min rating"],
+            "set.solve.maxRating":["最高评分","最高評分","Max rating"],
+            "set.solve.minPrice":["最低价格","最低價格","Min price"],
+            "set.solve.maxPrice":["最高价格","最高價格","Max price"],
+            "solve.autobtn":["AUTO SOLVE(%1)","AUTO SOLVE(%1)","AUTO SOLVE(%1)"],
+            "solve.done.notice":["AUTO SOLVE 完成：%1 个挑战成功，%2 个跳过","AUTO SOLVE 完成：%1 個挑戰成功，%2 個跳過","AUTO SOLVE done: %1 solved, %2 skipped"],
+            "solve.progress.notice":["求解 %1 %2","求解 %1 %2","Solving %1 %2"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
             "sort.asc":["由低到高","由低至高","Ascending"],
@@ -3605,6 +3617,15 @@
                             );
                             this._fsu.quicklyBtn.getRootElement().style.fontSize = "90%";
                             this._fsu?.quickOther.append(this._fsu.quicklyBtn.getRootElement());
+                            //26.10-jacyi.3 [C-03] AUTO SOLVE 按钮（双算法：B旧算法 / A风格新算法）
+                            let solveBtn = events.createButton(
+                                new UTButtonControl(),
+                                fy(["solve.autobtn", qs]),
+                                () => { solver.runForCurrent(); },
+                                "im"
+                            );
+                            solveBtn.getRootElement().style.fontSize = "90%";
+                            this._fsu?.quickOther.append(solveBtn.getRootElement());
                             //batch btn / 每日任务一键清空
                             let chName = this._challenge.name || '';
                             let isDaily = chName.indexOf('Daily') === 0 || chName.indexOf('每日') === 0;
@@ -8097,6 +8118,24 @@
                     l.appendChild(lb);
                     i.appendChild(l);
                 }
+                //26.10-jacyi.3 [C-03] AUTO SOLVE 设置区块（算法切换 + 求解参数）
+                let solveBox = document.createElement("div");
+                solveBox.classList.add("sort-filter-container");
+                let solveTitle = document.createElement("h4");
+                solveTitle.textContent = fy("set.solve.title");
+                solveBox.appendChild(solveTitle);
+                let solveInner = document.createElement("div");
+                solveInner.classList.add("fsu-setbox");
+                solveInner.appendChild(set.addSelect("solve","algorithm",
+                    [["legacy", fy("set.solve.algorithm.legacy")], ["fodder", fy("set.solve.algorithm.fodder")]],
+                    info.set.solve_algorithm === "fodder" ? "fodder" : "legacy"));
+                solveInner.appendChild(set.addNumber("solve","count", info.set.solve_count || 1, 1, 20, 1));
+                solveInner.appendChild(set.addNumber("solve","minRating", info.set.solve_minRating || 40, 40, 99, 1));
+                solveInner.appendChild(set.addNumber("solve","maxRating", info.set.solve_maxRating || 99, 40, 99, 1));
+                solveInner.appendChild(set.addNumber("solve","minPrice", info.set.solve_minPrice || 0, 0, 9999999, 100));
+                solveInner.appendChild(set.addNumber("solve","maxPrice", info.set.solve_maxPrice || 0, 0, 9999999, 100));
+                solveBox.appendChild(solveInner);
+                i.appendChild(solveBox);
 
 
                 this.__content.appendChild(i);
@@ -8184,6 +8223,50 @@
                 this._generated = !0;
             }
         }
+        //26.10-jacyi.3 [C-03] 下拉选择渲染器（算法切换等）
+        set.addSelect = (na, nb, options, current) => {
+            let row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:.4rem 0;";
+            let label = document.createElement("span");
+            label.textContent = fy(`set.${na}.${nb}`);
+            let sel = document.createElement("select");
+            sel.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;padding:.2rem .5rem;";
+            for (let i = 0; i < options.length; i++) {
+                let opt = document.createElement("option");
+                opt.value = options[i][0];
+                opt.textContent = options[i][1];
+                sel.appendChild(opt);
+            }
+            sel.value = current;
+            sel.addEventListener("change", () => set.save(`${na}_${nb}`, sel.value));
+            row.appendChild(label);
+            row.appendChild(sel);
+            return row;
+        };
+        //26.10-jacyi.3 [C-03] 数字输入渲染器（求解参数等）
+        set.addNumber = (na, nb, current, min, max, step) => {
+            let row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:.4rem 0;";
+            let label = document.createElement("span");
+            label.textContent = fy(`set.${na}.${nb}`);
+            let input = document.createElement("input");
+            input.type = "number";
+            input.value = current;
+            input.min = min;
+            input.max = max;
+            input.step = step;
+            input.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;padding:.2rem .5rem;width:5rem;text-align:center;";
+            input.addEventListener("change", () => {
+                let v = parseInt(input.value, 10);
+                if (isNaN(v)) v = current;
+                v = Math.max(min, Math.min(max, v));
+                input.value = v;
+                set.save(`${na}_${nb}`, v);
+            });
+            row.appendChild(label);
+            row.appendChild(input);
+            return row;
+        };
         set.addToggle = function(na,nb){
             let e = events.createToggle(
                 fy(`set.${na}.${nb}`),
@@ -10541,6 +10624,10 @@
                                     let tempFillNeed = {rs:JSON.parse(JSON.stringify(oneFillNeed[0].t.rs))};
                                     tempFillNeed = events.ignorePlayerToCriteria(tempFillNeed);
                                     tempFillNeed["lock"] = false;
+                                    //26.10-jacyi.3 [C-03] AUTO SOLVE 参数注入：solver 的 minRating/maxRating 覆盖检索评分范围
+                                    if (solver && solver._pendingRs) {
+                                        tempFillNeed.rs = JSON.parse(JSON.stringify(solver._pendingRs));
+                                    }
                                     fillPlayers = events.getItemBy(2,tempFillNeed,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
                                 }else{
                                     let excludeId = [];
@@ -16862,6 +16949,187 @@
         // 适配器：保持旧签名（调用点零改动），路由到新引擎
         events.openPacks = async (packId, packName, packNum, sellDup, sellAll) => {
             return packs.open({ packId: packId, packName: packName, packNum: packNum, sellDup: sellDup, sellAll: sellAll }, null);
+        };
+
+        // ============================================================
+        // [C-03] AUTO SOLVE 双算法（v26.10-jacyi.3）
+        // ------------------------------------------------------------
+        // 吸收 A 脚本（fodder）的自动求解：
+        //   - A 的原始求解核心为 fodder.gg 后端服务（sz → 服务器求解，Gold 会员限制），
+        //     本地无法复刻黑盒；本实现复刻 A 的协议与策略：
+        //     参数化候选过滤（评分/价格/普通卡/不可交易/仓库）+ 评分约束注入检索
+        //   - legacy：B 旧算法（events.fastSBC 链路，行为零变化）
+        //   - fodder：A 风格新算法（参数化预判 + rs 评分约束注入 + fastSBC 填充提交）
+        // 用户可在设置面板切换算法（solve_algorithm），默认 legacy
+        // 纯函数（//PURE:）复制进 test_*.js 测试 —— 修改实现必须同步测试
+        // ============================================================
+        var solver = {};
+
+        //PURE: 求解参数规范化（默认值 + 边界钳制）
+        function normalizeSolveOptions(raw, defaults) {
+            const d = defaults || {};
+            const o = Object.assign({}, d, raw || {});
+            o.count = Math.max(1, Math.min(20, parseInt(o.count, 10) || d.count || 1));
+            o.minRating = o.minRating == null ? (d.minRating != null ? d.minRating : null) : Math.max(40, Math.min(99, parseInt(o.minRating, 10) || 40));
+            o.maxRating = o.maxRating == null ? (d.maxRating != null ? d.maxRating : null) : Math.max(40, Math.min(99, parseInt(o.maxRating, 10) || 99));
+            if (o.minRating != null && o.maxRating != null && o.minRating > o.maxRating) {
+                const t = o.minRating; o.minRating = o.maxRating; o.maxRating = t;
+            }
+            o.minPrice = o.minPrice == null ? null : Math.max(0, parseInt(o.minPrice, 10) || 0);
+            o.maxPrice = o.maxPrice == null ? null : Math.max(0, parseInt(o.maxPrice, 10) || 0);
+            o.algorithm = o.algorithm === 'fodder' ? 'fodder' : 'legacy';
+            o.commonsOnly = !!o.commonsOnly;
+            o.untradeableOnly = !!o.untradeableOnly;
+            o.storageOnly = !!o.storageOnly;
+            return o;
+        }
+
+        //PURE: A 风格候选过滤（unitCoins: 按价格升序优先；unitOvr: 按评分升序优先）
+        function filterCandidates(items, options, helpers) {
+            helpers = helpers || {};
+            const isSpecial = helpers.isSpecial || ((it) => !!(it.isSpecial && it.isSpecial()));
+            const isUntradeable = helpers.isUntradeable || ((it) => it.untradeableCount > 0);
+            const filtered = items.filter((it) => {
+                const rating = it.rating || 0;
+                if (options.minRating != null && rating < options.minRating) return false;
+                if (options.maxRating != null && rating > options.maxRating) return false;
+                if (options.minPrice != null && (it.price || 0) < options.minPrice) return false;
+                if (options.maxPrice != null && (it.price || 0) > options.maxPrice) return false;
+                if (options.commonsOnly && isSpecial(it)) return false;
+                if (options.untradeableOnly && !isUntradeable(it)) return false;
+                return true;
+            });
+            const unit = options.unitCoins ? (it) => it.price || 0 : (it) => it.rating || 0;
+            return filtered.sort((a, b) => unit(a) - unit(b));
+        }
+
+        //PURE: 未完成挑战筛选（复制自 A 的挑战过滤逻辑）
+        function filterUnfinishedChallenges(challenges) {
+            return challenges.filter((c) => {
+                try {
+                    return !(c.status === "COMPLETED" || (c.isComplete && c.isComplete()));
+                } catch (e) { return true; }
+            });
+        }
+
+        //PURE: 求解循环统计
+        function buildSolveSummary(results) {
+            return results.reduce((acc, r) => {
+                if (r.solved) acc.solved++;
+                else acc.skipped++;
+                return acc;
+            }, { solved: 0, skipped: 0 });
+        }
+
+        solver._defaults = () => ({
+            count: 1, algorithm: "legacy",
+            minRating: null, maxRating: null, minPrice: null, maxPrice: null,
+            commonsOnly: false, untradeableOnly: false, storageOnly: false
+        });
+
+        solver._loadOptions = () => {
+            const s = info.set || {};
+            return {
+                algorithm: s.solve_algorithm === "fodder" ? "fodder" : "legacy",
+                count: s.solve_count || 1,
+                minRating: s.solve_minRating != null ? s.solve_minRating : null,
+                maxRating: s.solve_maxRating != null ? s.solve_maxRating : null,
+                minPrice: s.solve_minPrice != null ? s.solve_minPrice : null,
+                maxPrice: s.solve_maxPrice != null ? s.solve_maxPrice : null
+            };
+        };
+
+        solver._pendingRs = null;
+
+        // 双算法选择器
+        solver.algorithms = {
+            // B 旧算法：原样走 B 的 fastSBC 链路（行为零变化）
+            legacy: async (challenge, opts, deps) => {
+                const ok = await deps.fastSBC(challenge.setId, challenge.id);
+                return { solved: !!ok, reason: ok ? null : "legacy-failed" };
+            },
+            // A 新算法（本地实现 A 协议/参数策略；A 原始核心为后端服务，本地以参数化候选过滤+评分约束复刻其策略）
+            fodder: async (challenge, opts, deps) => {
+                // 1) 参数化候选池预判（A 风格过滤：评分/价格/普通卡/不可交易）
+                const pool = filterCandidates(deps.getUnassignedPool(), opts, deps);
+                if (pool.length < challenge.squad.getNumOfRequiredPlayers()) {
+                    return { solved: false, reason: "pool-too-small" };
+                }
+                // 2) 评分约束注入 B 检索（rs 覆盖，fastSBC 内读取后清空）
+                solver._pendingRs = { min: opts.minRating != null ? opts.minRating : undefined, max: opts.maxRating != null ? opts.maxRating : undefined };
+                try {
+                    const ok = await deps.fastSBC(challenge.setId, challenge.id);
+                    return { solved: !!ok, reason: ok ? null : "fodder-failed" };
+                } finally {
+                    solver._pendingRs = null;
+                }
+            }
+        };
+
+        solver._makeDeps = () => ({
+            getSet: (id) => services.SBC.repository.getSetById(id),
+            getChallenges: (setEntity) => new Promise((resolve) => {
+                try {
+                    services.SBC.requestChallengesForSet(setEntity).observe(cntlr.current(), (e, t) => {
+                        e.unobserve(cntlr.current());
+                        resolve(t.success ? (t.data.challenges || []) : []);
+                    });
+                } catch (e) { resolve([]); }
+            }),
+            fastSBC: async (id, cId) => {
+                try { await events.fastSBC(id, cId); return true; }
+                catch (e) { console.warn("[C-03] fastSBC 异常", e); return false; }
+            },
+            getUnassignedPool: () => _.filter(repositories.Item.getUnassignedItems(), (it) => it.isPlayer && it.isPlayer()),
+            isSpecial: (it) => !!(it.isSpecial && it.isSpecial()),
+            isUntradeable: (it) => it.untradeableCount > 0,
+            notify: (t, n) => events.notice(t, n)
+        });
+
+        // 求解循环：未完成挑战列表 → 按算法逐个求解 → 汇总
+        solver.solveLoop = async (setId, options, deps) => {
+            const opts = normalizeSolveOptions(options, solver._defaults());
+            deps = deps || solver._makeDeps();
+            const setEntity = deps.getSet(setId);
+            if (!setEntity) return { completed: 0, skipped: 0, results: [], reason: "set-not-found" };
+            const all = await deps.getChallenges(setEntity);
+            const unfinished = filterUnfinishedChallenges(all);
+            if (!unfinished.length) return { completed: 0, skipped: 0, results: [], reason: "all-complete" };
+            const targets = opts.count > 0 ? unfinished.slice(0, opts.count) : unfinished;
+            const results = [];
+            let completed = 0;
+            for (const ch of targets) {
+                let r = null;
+                try {
+                    if (opts.algorithm === "fodder") {
+                        r = await solver.algorithms.fodder(ch, opts, deps);
+                    } else {
+                        r = await solver.algorithms.legacy(ch, opts, deps);
+                    }
+                } catch (e) {
+                    console.warn("[C-03] solve 异常", e);
+                    r = { solved: false, reason: "exception" };
+                }
+                if (r && r.solved) completed++;
+                results.push({ challengeId: ch.id, name: ch.name, solved: !!(r && r.solved), reason: (r && r.reason) || null });
+                deps.notify(fy(["solve.progress.notice", ch.name || "", r && r.solved ? "✓" : "✗"]), r && r.solved ? 0 : 2);
+            }
+            return { completed: completed, skipped: results.length - completed, results: results, summary: buildSolveSummary(results) };
+        };
+
+        // 当前 SBC 一键 AUTO SOLVE（按钮入口）
+        solver.runForCurrent = async () => {
+            const c = cntlr.current();
+            if (!c || !c._set || !c._challenge) { events.notice(fy("solve.autobtn"), 2); return; }
+            const setId = c._set.id;
+            const opts = solver._loadOptions();
+            events.showLoader();
+            try {
+                const r = await solver.solveLoop(setId, opts, null);
+                events.notice(fy(["solve.done.notice", r.completed, r.skipped]), r.skipped > 0 ? 2 : 0);
+            } finally {
+                events.hideLoader();
+            }
         };
     }
 

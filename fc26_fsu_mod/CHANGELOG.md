@@ -9,7 +9,56 @@
 
 ---
 
-## v26.10-jacyi.2 (2026-08-16)
+## v26.10-jacyi.3 (2026-08-16)
+
+> AUTO SOLVE 双算法 — 吸收 A 脚本自动求解（参数化策略），用户可切换 B 旧算法 / A 风格新算法
+
+### ⚠️ 关键事实（逆向结论）
+
+**A 脚本的求解核心 `sz(x)` 是 fodder.gg 后端服务**（服务器求解，Gold 会员限制，本地无法复刻黑盒）。本功能复刻 A 的**协议与策略**：
+- A 的求解输入协议（需求标准化 + 候选池 + 过滤参数 + 平台）
+- A 的参数化策略（minRating/maxRating/minPrice/maxPrice/commonsOnly/untradeableOnly/storageOnly）
+- 本地实现：参数化候选过滤 + 评分约束注入 B 检索（rs 覆盖）
+- 未搬运 A 的 Gold 会员逻辑（糟粕丢弃）
+
+### 修改内容
+
+#### 1. solver 命名空间（[C-03] 块）
+- 纯函数（`//PURE:`）：`normalizeSolveOptions`（参数校验/边界钳制/min>max 交换）/ `filterCandidates`（A 风格过滤，unitCoins 按价格/unitOvr 按评分排序）/ `filterUnfinishedChallenges`（复制 A 挑战过滤）/ `buildSolveSummary`
+- `solver.algorithms.legacy`：B 旧算法 — 原样走 events.fastSBC 链路，行为零变化
+- `solver.algorithms.fodder`：A 风格新算法 — 参数化候选池预判（不足则跳过记录原因）+ rs 评分约束注入
+- `solver.solveLoop`：未完成挑战循环 → 按算法逐个求解 → 汇总（每挑战失败跳过继续）
+- `solver.runForCurrent`：当前 SBC 一键入口
+
+#### 2. 用户切换与参数（设置面板新增 AUTO SOLVE 区块）
+- 新增渲染器 `set.addSelect`（下拉）/ `set.addNumber`（数字输入）
+- 算法切换 `solve_algorithm`（默认 legacy — 新算法未验证不默认启用）
+- 求解参数：次数/最低评分/最高评分/最低价格/最高价格（存 info.set.solve_*）
+- SBC 详情"一键完成"旁新增 AUTO SOLVE 按钮（quickOther 容器）
+
+#### 3. fastSBC 参数注入（最小侵入）
+- 检索条件构造处加 rs 覆盖钩子：solver._pendingRs 存在时覆盖检索评分范围（solver 调用后 finally 清空）
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`
+  - `[C-03]` 块（文件尾）— solver 全套
+  - `events.fastSBC`（10541 附近）— rs 参数注入钩子（2 行）
+  - SBC 详情按钮区（3607 附近）— AUTO SOLVE 按钮
+  - 设置面板（8099 附近）— AUTO SOLVE 设置区块
+  - `set` 对象 — 新增 addSelect/addNumber 渲染器
+  - `info.localization` — 新增 15 个三语键（set.solve.* / solve.*）
+- 新增测试：`test_solver_core.js`（15 用例）/ `test_solve_options.js`（14 用例）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. SBC 详情页出现 AUTO SOLVE 按钮（一键完成旁）
+2. 默认 legacy 算法：点击 AUTO SOLVE → 按 B 原行为完成挑战
+3. 设置切到"新算法（A风格）"→ 点击 → 参数化过滤生效（如 minRating=80 时 80 分以下卡不被选用）
+4. 求解次数限制生效（设置次数=2 时只解 2 个挑战）
+5. 挑战全部完成时提示"all-complete"，不误报
+6. 参数越界钳制（minRating 输入 10 → 保存为 40）
+7. A 风格算法在候选不足时提示跳过原因（如 maxRating=70 且 SBC 要求 83）
 
 > 可交易包自动开启并全部出售 — 红色警示 + 两级确认防误点，批量模式三选
 
