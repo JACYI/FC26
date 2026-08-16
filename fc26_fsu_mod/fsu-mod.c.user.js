@@ -1637,6 +1637,12 @@
             "routine.mode.selldup":["出售重复","出售重複","Sell dupes"],
             "routine.mode.sellall":["全部出售","全部出售","Sell all"],
             "routine.mode.skip":["不开包","不開包","Skip"],
+            "fill.done":["智能填充完成，阵容已更新","智能填充完成，陣容已更新","Smart fill done, squad updated"],
+            "fill.error.pool":["未分配球员不足，无法填充","未分配球員不足，無法填充","Not enough unassigned players to fill"],
+            "fill.error.chem":["化学约束无法满足，请调整球员或关闭化学算法","化學約束無法滿足，請調整球員或關閉化學演算法","Chemistry constraints unsatisfiable"],
+            "fill.error.rating":["评分组合无解，未分配球员评分不足","評分組合無解，未分配球員評分不足","No rating combination solution"],
+            "fill.error.req":["俱乐部/联赛/国籍等约束无可用球员","俱樂部/聯賽/國籍等約束無可用球員","No players match club/league/nation constraints"],
+            "fill.error.noanswer":["穷尽所有算法仍无解，请检查屏蔽配置或补充球员","窮盡所有演算法仍無解，請檢查屏蔽設定或補充球員","All algorithms exhausted, check exclusions"],
             "solve.progress.notice":["求解 %1 %2","求解 %1 %2","Solving %1 %2"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
@@ -15307,45 +15313,24 @@
                             }
                         )
                     }
+                    //26.10-jacyi.7 [C-05] 智能填充按钮：移除闸门B（不依赖 oneFillCriteria，任何 SBC 挑战都可用）
+                    }
 
                     if(info.set.sbc_autofill){
-                        //一键填充按钮
+                        //一键填充按钮 → 升级为通用智能填充（AUTO SOLVE 2.0 引擎）
                         this._fsu.autoFillBtn = events.createButton(
                             new UTStandardButtonControl(),
                             fy("autofill.btntext"),
-                            (e) => {
-                                let playerList = [], removeIds = [];
-                                //24.16 排除球员配置按钮：一键填充严格模式应用
-                                if(!info.build.strictlypcik && events.isEligibleForOneFill(oneFillCriteria)){
-                                    let criteriaNumber = oneFillCriteria[0].c + oneFillCriteria[1].c;
-                                    let getCriteria = {rs:JSON.parse(JSON.stringify(oneFillCriteria[0].t.rs))};
-                                    getCriteria = events.ignorePlayerToCriteria(getCriteria);
-                                    playerList = events.getItemBy(2,getCriteria,repositories.Item.getUnassignedItems()).slice(0,criteriaNumber);
-                                }else{
-                                    for (let i of oneFillCriteria) {
-                                        let getCriteria = JSON.parse(JSON.stringify(i.t));
-                                        getCriteria = events.ignorePlayerToCriteria(getCriteria);
-                                        if(removeIds.length){
-                                            getCriteria["NEdatabaseId"] = removeIds;
-                                        }
-                                        getCriteria["lock"] = false;
-                                        let result = events.getItemBy(2, getCriteria, repositories.Item.getUnassignedItems());
-
-                                        let cropping = result.slice(0, i.c);
-                                        console.log(cropping,_.map(cropping,"rating"))
-                                        removeIds = removeIds.concat(cropping.map( i => {return i.databaseId}))
-                                        playerList = playerList.concat(cropping)
-                                    }
-                                }
-                                if(playerList.length){
-                                    events.playerListFillSquad(thisController._challenge,playerList,2);
-                                }else{
-                                    e.setInteractionState(0)
-                                    events.notice("notice.noplayer",2)
+                            async (e) => {
+                                //[C-05] 智能填充：自动路由算法（按需求类型），失败给分类原因
+                                const r = await fill.runForCurrent(thisController, { algorithm: "auto" });
+                                if (!r.ok && e && e.setInteractionState) {
+                                    e.setInteractionState(0);
                                 }
                             },
                             "call-to-action"
                         )
+                        //tipsType 保留旧语义（有 4 类需求时显示对应提示；扩展/化学需求无旧提示）
                         if(events.isEligibleForOneFill(oneFillCriteria)){
                             this._fsu.autoFillBtn.tipsType = 1;
                         }else if(_.size(oneFillCriteria) == 1){
@@ -15356,7 +15341,7 @@
                             }
                         }
                     }
-                }else if(info.set.sbc_dupfill && repositories.Item.getUnassignedItems().length){
+                else if(info.set.sbc_dupfill && repositories.Item.getUnassignedItems().length){
 
                     //重复球员填充按钮
                     this._fsu.dupFillBtn = events.createButton(
@@ -15513,13 +15498,13 @@
 
             const exchangeElement = view._btnExchange.getRootElement();
 
-            if(fsu.hasChemistry === 0){
-                //添加一键填充按钮
-                if(info.set.sbc_autofill && fsu?.autoFillBtn){
-                    exchangeElement.before(fsu.autoFillBtn.getRootElement())
-                }
+            //26.10-jacyi.7 [C-05] 智能填充按钮：移除化学闸门A（化学 SBC 也显示，引擎有 chemFirst 算法）
+            if(info.set.sbc_autofill && fsu?.autoFillBtn){
+                exchangeElement.before(fsu.autoFillBtn.getRootElement())
+            }
 
-                //添加重复球员填充按钮
+            if(fsu.hasChemistry === 0){
+                //添加重复球员填充按钮（原闸门保留：这两个算法不处理化学）
                 if(info.set.sbc_dupfill && fsu?.dupFillBtn){
                     exchangeElement.before(fsu.dupFillBtn.getRootElement())
                 }
@@ -15528,8 +15513,10 @@
                 if(info.set.sbc_squadcmpl && fsu?.squadCmplBtn){
                     exchangeElement.before(fsu.squadCmplBtn.getRootElement())
                 }
-                
-                //非需求默契状态下
+            }
+
+            //[C-05] 布局：任一 FSU 填充按钮存在即执行 mini 化（化学 SBC 页同样需要，避免按钮错位）
+            if(fsu?.autoFillBtn || fsu?.dupFillBtn || fsu?.squadCmplBtn){
                 Object.assign(view._btnSquadBuilder.getRootElement().style,{
                     width: 'calc(100% - 1rem)',
                     margin: '.5rem auto'
@@ -15537,11 +15524,13 @@
                 view._btnSquadBuilder.addClass("mini");
                 rewardElement.appendChild(view._btnSquadBuilder.getRootElement());
 
-                Object.assign(fsu.fillSquadBtn.getRootElement().style,{
-                    width: 'calc(100% - 1rem)',
-                    margin: '.5rem auto'
-                });
-                fsu.fillSquadBtn.addClass("mini");
+                if(fsu?.fillSquadBtn){
+                    Object.assign(fsu.fillSquadBtn.getRootElement().style,{
+                        width: 'calc(100% - 1rem)',
+                        margin: '.5rem auto'
+                    });
+                    fsu.fillSquadBtn.addClass("mini");
+                }
             }
 
             //添加方案填充按钮
@@ -17739,6 +17728,63 @@
             const result = solve([], 0);
             if (!result) return { filled: [], status: "failed", reason: "no-solution" };
             return { filled: result, status: "ok", reason: null };
+        };
+
+        //PURE: 化学启发式得分：候选与已选球员的属性重叠（俱乐部×3 联赛×2 国家×1）
+        // 对应 FC26 化学表（同俱乐部/联赛/国家加化学）；近似启发，终校验（EA meetsRequirements）兜底
+        function chemScore(player, picked) {
+            let score = 0;
+            for (const p of (picked || [])) {
+                if (p.teamId != null && player.teamId != null && p.teamId === player.teamId) score += 3;
+                if (p.leagueId != null && player.leagueId != null && p.leagueId === player.leagueId) score += 2;
+                if (p.nationId != null && player.nationId != null && p.nationId === player.nationId) score += 1;
+            }
+            return score;
+        }
+
+        // 化学优先：有化学需求时，候选按化学启发式排序（同队/同联赛/同国家多的优先），低评分次之
+        fill.algorithms.chemFirst = async (ctx, deps) => {
+            if (!ctx.parsed.flags.chem) return { filled: [], status: "failed", reason: "no-chem-flag" };
+            const groups = ctx.parsed.groups;
+            if (!groups.length) {
+                // 纯化学需求（无其他可检索组）：全量候选按化学启发式排序
+                let res = deps.getItemBy(deps.ignorePlayerToCriteria({}), ctx.pool);
+                if (ctx.excludeRatings.size) res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+                const scored = (res || []).slice(0, 40)
+                    .map((it) => ({ it: it, s: chemScore(it, []) }))
+                    .sort((a, b) => b.s - a.s || (a.it.rating || 0) - (b.it.rating || 0));
+                const take = scored.slice(0, ctx.slotsNeeded).map((x) => x.it);
+                return {
+                    filled: take,
+                    status: take.length >= ctx.slotsNeeded ? "ok" : (take.length ? "partial" : "failed"),
+                    reason: take.length ? null : "no-candidates"
+                };
+            }
+            const picked = [];
+            const excluded = ctx.excluded.slice();
+            let shortfall = false;
+            for (const g of groups) {
+                const need = Math.min(g.c, ctx.slotsNeeded - picked.length);
+                if (need <= 0) break;
+                const crit = deps.ignorePlayerToCriteria(Object.assign({}, g.t));
+                if (excluded.length) crit.NEdatabaseId = excluded;
+                crit.lock = false;
+                let res = deps.getItemBy(crit, ctx.pool);
+                if (ctx.excludeRatings.size) res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+                // 化学启发式排序：与已选球员属性重叠多者优先，同分低评分优先
+                const scored = (res || []).slice(0, 40)
+                    .map((it) => ({ it: it, s: chemScore(it, picked) }))
+                    .sort((a, b) => b.s - a.s || (a.it.rating || 0) - (b.it.rating || 0));
+                const take = scored.slice(0, need).map((x) => x.it);
+                if (take.length < need) shortfall = true;
+                for (const it of take) { picked.push(it); excluded.push(it.databaseId); }
+                if (g.t.rating != null) ctx.excludeRatings.add(g.t.rating);
+            }
+            return {
+                filled: picked,
+                status: shortfall ? "partial" : (picked.length >= ctx.slotsNeeded ? "ok" : (picked.length ? "partial" : "failed")),
+                reason: picked.length ? null : "no-candidates"
+            };
         };
 
         // 引擎主流程：parse → 路由 → 逐算法（排除链）→ 终校验 → 失败分类

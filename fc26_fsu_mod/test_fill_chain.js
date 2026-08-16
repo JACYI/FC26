@@ -23,6 +23,17 @@ function capShortlist(list, n) {
     return list.slice(0, Math.max(0, n));
 }
 
+//PURE: 化学启发式得分：候选与已选球员的属性重叠（俱乐部×3 联赛×2 国家×1）
+function chemScore(player, picked) {
+    let score = 0;
+    for (const p of (picked || [])) {
+        if (p.teamId != null && player.teamId != null && p.teamId === player.teamId) score += 3;
+        if (p.leagueId != null && player.leagueId != null && p.leagueId === player.leagueId) score += 2;
+        if (p.nationId != null && player.nationId != null && p.nationId === player.nationId) score += 1;
+    }
+    return score;
+}
+
 //PURE: 化学打分比较器（squadChem desc → playerChem desc → rating asc，对齐 getTemplate 化学择优）
 function scoreCandidate(squadChem, playerChem, rating) {
     return { squadChem: squadChem, playerChem: playerChem, rating: rating };
@@ -126,6 +137,36 @@ test('排序稳定性：整体按三键排序（squadChem 优先于 playerChem/r
     const sorted = list.slice().sort(compareScore);
     // (30,3,75) < (30,3,80) < (30,1,90) < (20,2,85)：squadChem=30 全部排在 squadChem=20 前
     assert.deepStrictEqual(sorted.map(s => s.rating), [75, 80, 90, 85]);
+});
+
+// --- chemScore 化学启发式 ---
+test('化学：同俱乐部 +3', () => {
+    const picked = [{ teamId: 101, leagueId: 13, nationId: 44 }];
+    assert.strictEqual(chemScore({ teamId: 101, leagueId: 19, nationId: 44 }, picked), 4, '同队3 + 同国家1');
+});
+
+test('化学：同联赛 +2、同国家 +1', () => {
+    const picked = [{ teamId: 101, leagueId: 13, nationId: 44 }];
+    assert.strictEqual(chemScore({ teamId: 999, leagueId: 13, nationId: 44 }, picked), 3);
+    assert.strictEqual(chemScore({ teamId: 999, leagueId: 19, nationId: 44 }, picked), 1);
+});
+
+test('化学：完全无关 0', () => {
+    const picked = [{ teamId: 101, leagueId: 13, nationId: 44 }];
+    assert.strictEqual(chemScore({ teamId: 999, leagueId: 19, nationId: 1 }, picked), 0);
+});
+
+test('化学：与多名已选球员重叠累计', () => {
+    const picked = [
+        { teamId: 101, leagueId: 13, nationId: 44 },
+        { teamId: 101, leagueId: 13, nationId: 44 }
+    ];
+    assert.strictEqual(chemScore({ teamId: 101, leagueId: 13, nationId: 44 }, picked), 12, '每人 3+2+1=6，两人 12');
+});
+
+test('化学：缺字段容错（null 属性不报错）', () => {
+    assert.strictEqual(chemScore({ teamId: null, leagueId: null, nationId: null }, [{ teamId: 1, leagueId: 2, nationId: 3 }]), 0);
+    assert.strictEqual(chemScore({ teamId: 1, leagueId: 2, nationId: 3 }, []), 0);
 });
 
 // ===== 结果 =====

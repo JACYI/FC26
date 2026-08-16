@@ -185,6 +185,59 @@ algorithms.ratingCombo = async (ctx, deps) => {
     return { filled: [], status: "failed", reason: "rating-insufficient" };
 };
 
+//PURE: 化学启发式得分（复制自 C）
+function chemScore(player, picked) {
+    let score = 0;
+    for (const p of (picked || [])) {
+        if (p.teamId != null && player.teamId != null && p.teamId === player.teamId) score += 3;
+        if (p.leagueId != null && player.leagueId != null && p.leagueId === player.leagueId) score += 2;
+        if (p.nationId != null && player.nationId != null && p.nationId === player.nationId) score += 1;
+    }
+    return score;
+}
+
+algorithms.chemFirst = async (ctx, deps) => {
+    if (!ctx.parsed.flags.chem) return { filled: [], status: "failed", reason: "no-chem-flag" };
+    const groups = ctx.parsed.groups;
+    if (!groups.length) {
+        let res = deps.getItemBy(deps.ignorePlayerToCriteria({}), ctx.pool);
+        if (ctx.excludeRatings.size) res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+        const scored = (res || []).slice(0, 40)
+            .map((it) => ({ it: it, s: chemScore(it, []) }))
+            .sort((a, b) => b.s - a.s || (a.it.rating || 0) - (b.it.rating || 0));
+        const take = scored.slice(0, ctx.slotsNeeded).map((x) => x.it);
+        return {
+            filled: take,
+            status: take.length >= ctx.slotsNeeded ? "ok" : (take.length ? "partial" : "failed"),
+            reason: take.length ? null : "no-candidates"
+        };
+    }
+    const picked = [];
+    const excluded = ctx.excluded.slice();
+    let shortfall = false;
+    for (const g of groups) {
+        const need = Math.min(g.c, ctx.slotsNeeded - picked.length);
+        if (need <= 0) break;
+        const crit = deps.ignorePlayerToCriteria(Object.assign({}, g.t));
+        if (excluded.length) crit.NEdatabaseId = excluded;
+        crit.lock = false;
+        let res = deps.getItemBy(crit, ctx.pool);
+        if (ctx.excludeRatings.size) res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+        const scored = (res || []).slice(0, 40)
+            .map((it) => ({ it: it, s: chemScore(it, picked) }))
+            .sort((a, b) => b.s - a.s || (a.it.rating || 0) - (b.it.rating || 0));
+        const take = scored.slice(0, need).map((x) => x.it);
+        if (take.length < need) shortfall = true;
+        for (const it of take) { picked.push(it); excluded.push(it.databaseId); }
+        if (g.t.rating != null) ctx.excludeRatings.add(g.t.rating);
+    }
+    return {
+        filled: picked,
+        status: shortfall ? "partial" : (picked.length >= ctx.slotsNeeded ? "ok" : (picked.length ? "partial" : "failed")),
+        reason: picked.length ? null : "no-candidates"
+    };
+};
+
 algorithms.verifyFallback = async (ctx, deps) => {
     const slots = ctx.slotsNeeded;
     if (slots <= 0) return { filled: [], status: "ok", reason: null };
@@ -465,6 +518,38 @@ async function test(name, fn) {
         ], 11), {}, deps);
         assert.strictEqual(r.ok, false);
         assert.strictEqual(r.reason, "fill.error.req");
+    });
+
+    // --- chemFirst：化学需求 → 同队球员优先 ---
+    await test('化学需求 → chemFirst 链首，同队球员被优先选中', async () => {
+        const pool = [
+            makePlayer(80, { teamId: 101, leagueId: 13, nationId: 44 }),
+            makePlayer(81, { teamId: 101, leagueId: 13, nationId: 44 }),
+            makePlayer(82, { teamId: 101, leagueId: 13, nationId: 44 }),
+            makePlayer(88, { teamId: 999, leagueId: 19, nationId: 1 }),
+            makePlayer(87, { teamId: 999, leagueId: 19, nationId: 1 }),
+            ...Array.from({ length: 6 }, (_, i) => makePlayer(75, { teamId: 500 + i, leagueId: 30, nationId: 2 }))
+        ];
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([
+            { key: "CHEMISTRY_POINTS", value: 20, count: 1 },
+            { key: "PLAYER_MIN_OVR", value: 75, count: 11 }
+        ], 11), {}, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.algorithm.split("+")[0], "chemFirst", 'chemFirst 在链首');
+        assert.ok(r.attempts.some(a => a.name === "chemFirst" && a.added >= 3), 'chemFirst 至少选中 3 个同队球员');
+        const sameTeam = r.filled.filter(p => p.teamId === 101).length;
+        assert.ok(sameTeam >= 3, `同队球员优先（实际 ${sameTeam}）`);
+    });
+
+    await test('纯化学需求（无其他组）→ chemFirst 直接取候选', async () => {
+        const pool = Array.from({ length: 12 }, (_, i) => makePlayer(80, { teamId: 101, leagueId: 13, nationId: 44 }));
+        const deps = makeDeps(pool);
+        const r = await fillRun(makeChallenge([
+            { key: "CHEMISTRY_POINTS", value: 20, count: 1 }
+        ], 11), {}, deps);
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.filled.length, 11);
     });
 
     // --- 空需求 ---
