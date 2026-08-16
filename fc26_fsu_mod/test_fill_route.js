@@ -8,12 +8,14 @@
 const assert = require('assert');
 
 // ===== 待测函数（//PURE: 复制自 fsu-mod.c.user.js [C-05]）=====
-//PURE: 需求 flags → 算法链（全局算法在前，槽填充在后，校验兜底恒在末尾）
+//PURE: 需求 flags → 算法链（约束组先填：chem→extended→rating→basic，校验兜底恒在末尾）
+// 顺序理由：quickGreedy/ratingCombo 会填满阵容，若扩展约束（俱乐部/国籍等）未先满足，
+// 填满即 break 会导致约束缺失；reqAware 先保证约束组，再由全局算法补剩余槽
 function routeAlgorithm(flags) {
     const chain = [];
     if (flags.chem) chain.push("chemFirst");
-    if (flags.rating) chain.push("ratingCombo");
     if (flags.extended) chain.push("reqAware");
+    if (flags.rating) chain.push("ratingCombo");
     if (flags.basic || (!flags.extended && !flags.chem && !flags.rating)) chain.push("quickGreedy");
     chain.push("verifyFallback");
     return chain;
@@ -65,10 +67,10 @@ test('扩展需求（俱乐部）→ reqAware 加入', () => {
     assert.deepStrictEqual(routeAlgorithm(F({ extended: true })), ["reqAware", "verifyFallback"]);
 });
 
-test('chem + club + rating → [chemFirst, ratingCombo, reqAware, verifyFallback]', () => {
+test('chem + club + rating → [chemFirst, reqAware, ratingCombo, verifyFallback]（约束组先填）', () => {
     assert.deepStrictEqual(
         routeAlgorithm(F({ chem: true, rating: true, extended: true })),
-        ["chemFirst", "ratingCombo", "reqAware", "verifyFallback"]
+        ["chemFirst", "reqAware", "ratingCombo", "verifyFallback"]
     );
 });
 
@@ -76,8 +78,8 @@ test('chem + basic → [chemFirst, quickGreedy, verifyFallback]', () => {
     assert.deepStrictEqual(routeAlgorithm(F({ chem: true, basic: true })), ["chemFirst", "quickGreedy", "verifyFallback"]);
 });
 
-test('rating + extended → [ratingCombo, reqAware, verifyFallback]', () => {
-    assert.deepStrictEqual(routeAlgorithm(F({ rating: true, extended: true })), ["ratingCombo", "reqAware", "verifyFallback"]);
+test('rating + extended → [reqAware, ratingCombo, verifyFallback]（扩展约束先填）', () => {
+    assert.deepStrictEqual(routeAlgorithm(F({ rating: true, extended: true })), ["reqAware", "ratingCombo", "verifyFallback"]);
 });
 
 test('verifyFallback 恒在末尾（全 flag）', () => {

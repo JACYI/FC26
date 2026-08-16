@@ -9,7 +9,68 @@
 
 ---
 
-## v26.10-jacyi.6 (2026-08-16)
+## v26.10-jacyi.7 (2026-08-16)
+
+> AUTO SOLVE 2.0 — 通用 SBC 填充引擎：融合所有填充算法，按需求类型自动路由，任何 SBC 都能填充
+
+### 背景
+
+用户重新定位 AUTO SOLVE：应为"阵容补全/SBC方案填充"按钮的替代，融合所有相关算法，针对不同类型 SBC 选择不同算法，最终都能填充出符合需求的球员。调研确认 B 的硬边界：`oneFillCreationGF` 只认识 4 类需求（品质/稀有度/最低评分），联赛/国籍/俱乐部/精确评分/化学 SBC 无法一键填充；两个闸门（hasChemistry/oneFillCriteria）导致按钮不显示。
+
+### 修改内容（5 步实施）
+
+#### 1. [C-05] 纯函数层
+- `parseRequirements`：需求 → groups/flags/summary；**关键突破**——getItemBy 的 default 分支支持任意直接字段匹配，CLUB_ID→`teamId`（expandTeamIds 同队扩展）、LEAGUE_ID→`leagueId`、NATION_ID→`nationId`、EXACT_OVR→`rating`、POSITION→`includePos` 全部可作 criteria，无需改检索核心；TEAM_RATING/CHEMISTRY 仅置 flags；未知需求透传不丢弃
+- `routeAlgorithm`/`buildChain`：算法链路由（chem→extended→rating→basic 约束组先填，verifyFallback 恒末尾）+ 强制覆盖（legacy/fodder 旧行为零变化）
+- `classifyFailure`：失败原因分类（pool→chem→rating→req→noanswer 优先级，partial 也算约束未满足）
+- `expandTeamIds`/`chemScore`/`scoreCandidate`/`compareScore`/`capShortlist` 辅助纯函数
+
+#### 2. 算法库 + 引擎控制流
+- `fill.algorithms`：quickGreedy（现有 4 类，fodder 参数注入）/ reqAware（扩展类型）/ ratingCombo（needRatingsCount+getRatingPlayers）/ verifyFallback（受限回溯，候选 cap 200 + virtualMeets cap 2000）
+- `fill.run` 主流程：parse → 路由 → 逐算法（排除链 NEdatabaseId + **excludeRatings exact 评分占用**）→ 终校验（EA meetsRequirements）→ 失败分类
+- **测试暴露并修复 3 个真实缺陷**：① 路由顺序（quickGreedy 先填满导致扩展约束缺失 → 约束组先填）② excludeRatings 时序（取数前占用导致自己组被过滤 → 取完再占用）③ 算法 status 语义（组取不够即使填满也标 partial → shortfall 标记）
+- `fill.runForCurrent`：按钮入口（填充 + 落阵保存 + 分类通知）
+
+#### 3. chemFirst + 按钮升级
+- `chemFirst` 算法：化学启发式排序（候选与已选球员同俱乐部×3/联赛×2/国家×1 加权，低评分次之；纯化学需求走全量候选）；终校验兜底
+- **一键填充按钮升级**：移除闸门B（不依赖 oneFillCriteria，任何 SBC 创建）；移除闸门A（化学 SBC 也插入，chemFirst 处理）；点击 → `fill.runForCurrent`（auto 路由）；失败 setInteractionState(0) + 分类通知
+- dupFill/squadCmpl 保留原闸门（不处理化学）；fillSquadBtn（方案）不动；布局 mini 化按"任一填充按钮存在"执行
+- i18n：fill.done + fill.error.pool/chem/rating/req/noanswer 三语键
+
+#### 4. AUTO SOLVE auto 模式
+- `solve_algorithm` 默认 **auto**（存量 legacy/fodder 兼容），设置下拉加"自动路由（智能）"
+- `events.submitChallengeFlow`：从 fastSBC 提交段提取（逐行等价：可提交检查/不可交易警告/提交/奖励弹窗/页面刷新/PIN），fastSBC 本体零改动
+- `solver.algorithms.auto`：fill.run 引擎填充 → 落阵 → submitChallengeFlow；solveLoop 加 auto 分支
+- **收益**：批量 AUTO SOLVE 不再依赖 fastsbc 缓存（未进过阵容页的 SBC 也能求解），能求解化学/俱乐部类 SBC
+
+#### 5. 收尾
+- VERSION、归档快照、完整记录
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`
+  - `[C-05]` 块（文件尾，[C-04] 后）— fill 引擎全套 + submitChallengeFlow
+  - `oneFillCreationGF`（10526）— **零改动**（fastsbc 缓存兼容）
+  - 按钮创建段（15257-15359）— 闸门B 移除 + 智能填充回调
+  - 按钮插入段（15516-15550）— 闸门A 拆分 + 布局
+  - `[C-03]` solver — normalizeSolveOptions/_loadOptions/algorithms.auto/solveLoop 分支
+  - 设置面板（8166）— 算法下拉加 auto
+  - `info.localization` — fill.* + set.solve.algorithm.auto 三语键
+- 新增测试：`test_fill_parse.js`（23）/ `test_fill_route.js`（14）/ `test_fill_chain.js`（19）/ `test_fill_flow.js`（12，async 感知 mock 控制流）
+- 更新：`test_solve_options.js`（algorithm auto 语义，16 用例）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. **智能填充按钮**：SBC 详情页"一键填充"现在任何挑战都显示（含化学/俱乐部/联赛 SBC）
+2. 纯评分 SBC（如 83+）→ 快速贪心填充成功
+3. 俱乐部/联赛/国籍 SBC（如"至少 4 个曼城"）→ reqAware 正确筛选（约束组先填）
+4. 化学 SBC → chemFirst 优先选同队/同联赛球员，失败给"化学约束无法满足"分类提示
+5. 精确评分 SBC（EXACT_OVR）→ 恰好 N 人该评分，补人不重复选同分
+6. 填不满 → 分类提示（未分配不足/约束无解/穷尽无解），按钮禁用可再次点击
+7. **AUTO SOLVE 按钮**（auto 默认）：对未进过阵容页的 SBC 也能批量完成（不再报 fastsbc.error_1）
+8. 设置切 legacy/fodder → 行为与旧版一致（回归）
+9. 化学 SBC 详情页布局：智能填充按钮显示且布局不错位（mini 化正常）
+10. 排除配置（屏蔽联赛/不可交易）在智能填充中生效（ignorePlayerToCriteria 复用）
 
 > 开包进度提示去重 — 去掉居中"正在打开"重复文案，进度条改为屏幕居中浮层面板
 
