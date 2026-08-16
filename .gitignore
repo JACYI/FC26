@@ -38,3 +38,6 @@ sbc_status_report*
 
 # Nested fc26_fsu_mod git repo (own history)
 fc26_fsu_mod/.git/
+
+# Fodder client bundle (A脚本逆向中间产物, not published)
+fc26_fsu_mod/fodder_client*.js
