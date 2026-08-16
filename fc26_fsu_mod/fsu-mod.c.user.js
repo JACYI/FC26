@@ -1623,6 +1623,20 @@
             "set.solve.maxPrice":["最高价格","最高價格","Max price"],
             "solve.autobtn":["AUTO SOLVE(%1)","AUTO SOLVE(%1)","AUTO SOLVE(%1)"],
             "solve.done.notice":["AUTO SOLVE 完成：%1 个挑战成功，%2 个跳过","AUTO SOLVE 完成：%1 個挑戰成功，%2 個跳過","AUTO SOLVE done: %1 solved, %2 skipped"],
+            "routine.addbtn":["加入流程","加入流程","Add to Routine"],
+            "routine.managebtn":["流程管理","流程管理","Routines"],
+            "routine.manage.title":["流程管理","流程管理","Routine Manager"],
+            "routine.manage.new":["新建流程","新建流程","New"],
+            "routine.manage.delete":["删除流程","刪除流程","Delete"],
+            "routine.manage.run":["立即执行","立即執行","Run now"],
+            "routine.manage.steps":["步骤","步驟","Steps"],
+            "routine.added.notice":["已加入流程：%1","已加入流程：%1","Added to routine: %1"],
+            "routine.progress.notice":["流程 %1（%2/%3）","流程 %1（%2/%3）","Routine %1 (%2/%3)"],
+            "routine.done.notice":["流程执行完成：%1 完成，%2 异常","流程執行完成：%1 完成，%2 異常","Routine done: %1 ok, %2 failed"],
+            "routine.mode.open":["开包","開包","Open"],
+            "routine.mode.selldup":["出售重复","出售重複","Sell dupes"],
+            "routine.mode.sellall":["全部出售","全部出售","Sell all"],
+            "routine.mode.skip":["不开包","不開包","Skip"],
             "solve.progress.notice":["求解 %1 %2","求解 %1 %2","Solving %1 %2"],
             "openpack.storebtn.popupm":["批量开启将会自动开启指定球员包，非重复球员保存至俱乐部，重复且评分高于 %1(黄金范围) 的球员保存至SBC仓库，无法分配则弹出未分配列表并停止程序。<br><br>批量开启数量（默认为全部）：","批量開啟將會自動開啟指定的球員包，非重複球員將保存至俱樂部，重複且評分高於 %1（黃金範圍） 的球員將保存至 SBC 倉庫，若無法分配，將彈出未分配列表並停止程序。<br><br>批量開啟數量（預設為全部）：","Bulk opening will automatically open the selected player packs.<br>Non-duplicate players will be sent to your Club.<br>Duplicate players with a rating above %1 (Gold range) will be sent to SBC storage.<br>If any players cannot be assigned, the unassigned list will be displayed and the process will stop.<br><br>Number of packs to open (default is all):"],
             "sort.desc":["由高到低","由高至低","Descending"],
@@ -3626,6 +3640,23 @@
                             );
                             solveBtn.getRootElement().style.fontSize = "90%";
                             this._fsu?.quickOther.append(solveBtn.getRootElement());
+                            //26.10-jacyi.4 [C-04] 加入流程 / 流程管理按钮
+                            let routineAddBtn = events.createButton(
+                                new UTButtonControl(),
+                                fy("routine.addbtn"),
+                                () => { routine.addCurrentToDefault(); },
+                                "im"
+                            );
+                            routineAddBtn.getRootElement().style.fontSize = "90%";
+                            this._fsu?.quickOther.append(routineAddBtn.getRootElement());
+                            let routineMgmtBtn = events.createButton(
+                                new UTButtonControl(),
+                                fy("routine.managebtn"),
+                                () => { routine.managePopup(); },
+                                "im"
+                            );
+                            routineMgmtBtn.getRootElement().style.fontSize = "90%";
+                            this._fsu?.quickOther.append(routineMgmtBtn.getRootElement());
                             //batch btn / 每日任务一键清空
                             let chName = this._challenge.name || '';
                             let isDaily = chName.indexOf('Daily') === 0 || chName.indexOf('每日') === 0;
@@ -17130,6 +17161,301 @@
             } finally {
                 events.hideLoader();
             }
+        };
+
+        // ============================================================
+        // [C-04] 自定义流程编排（v26.10-jacyi.4）
+        // ------------------------------------------------------------
+        // 参考 A 脚本 routines（createRoutine/addSbc/editRoutine/deleteRoutine）：
+        //   用户自定义 SBC 步骤序列 + 开包配置，自动执行
+        //   "完成SBC1 → 开包SBC1 → 完成SBC2 → 开包SBC2 ..." 循环
+        // 完成步骤复用 events.fastSBC（B 链路），开包复用 packs.open（[C-01] 引擎，继承稳定性）
+        // 持久化：GM key "fsu_routines"（带版本号，结构可演进）；启动加载时清理过期流程
+        // 纯函数（//PURE:）复制进 test_*.js 测试 —— 修改实现必须同步测试
+        // ============================================================
+        var routine = {};
+
+        //PURE: 流程数据规范化（校验 + 补默认，id 由创建方生成）
+        function normalizeRoutine(raw) {
+            const r = raw || {};
+            return {
+                id: typeof r.id === "string" ? r.id : "",
+                name: r.name || "未命名流程",
+                enabled: r.enabled !== false,
+                daily: !!r.daily,
+                expiresDaysHours: r.expiresDaysHours && typeof r.expiresDaysHours === "object" ? {
+                    d: Math.max(0, parseInt(r.expiresDaysHours.d, 10) || 0),
+                    h: Math.max(0, parseInt(r.expiresDaysHours.h, 10) || 0)
+                } : null,
+                createdAt: typeof r.createdAt === "number" ? r.createdAt : null,
+                steps: Array.isArray(r.steps) ? r.steps
+                    .map((s) => ({
+                        sbcId: s.sbcId || null,
+                        challengeId: s.challengeId || null,
+                        sbcName: s.sbcName || "",
+                        packId: s.packId || null,
+                        packMode: ["open", "sellDup", "sellAll", "skip"].indexOf(s.packMode) >= 0 ? s.packMode : "open"
+                    }))
+                    .filter((s) => s.sbcId) : []
+            };
+        }
+
+        //PURE: 流程是否过期（daily 模式 + expiresDaysHours 从 createdAt 起算；0/0 视为未设置，不过期）
+        function routineIsExpired(r, now) {
+            if (!r || !r.daily || !r.expiresDaysHours || !r.createdAt) return false;
+            const ms = (r.expiresDaysHours.d || 0) * 86400000 + (r.expiresDaysHours.h || 0) * 3600000;
+            if (ms <= 0) return false;
+            return now - r.createdAt > ms;
+        }
+
+        //PURE: 规范化整个存储结构（v 版本号 + 过期过滤）
+        function normalizeRoutineStore(raw, now) {
+            if (!raw || typeof raw !== "object" || !Array.isArray(raw.routines)) return { v: 1, routines: [] };
+            return {
+                v: 1,
+                routines: raw.routines.map(normalizeRoutine).filter((r) => !routineIsExpired(r, now))
+            };
+        }
+
+        routine.load = (now) => {
+            try {
+                return normalizeRoutineStore(JSON.parse(GM_getValue("fsu_routines", "null")), now || Date.now());
+            } catch (e) {
+                return { v: 1, routines: [] };
+            }
+        };
+        routine.save = (list) => {
+            GM_setValue("fsu_routines", JSON.stringify({ v: 1, routines: list.map(normalizeRoutine) }));
+        };
+
+        routine._makeDeps = () => ({
+            fastSBC: async (id, cId) => {
+                try { await events.fastSBC(id, cId); return true; }
+                catch (e) { console.warn("[C-04] fastSBC 异常", e); return false; }
+            },
+            openPack: async (packId, mode) => {
+                const all = _.filter(repositories.Store.myPacks.values(), { id: packId });
+                if (!all.length) return { ok: false, reason: "pack-not-found" };
+                return packs.open({
+                    packId: packId,
+                    packName: all[0].name || packId,
+                    packNum: all.length,
+                    sellDup: mode === "sellDup",
+                    sellAll: mode === "sellAll"
+                }, null);
+            },
+            notify: (t, n) => events.notice(t, n)
+        });
+
+        // 执行引擎：逐步骤"完成 SBC → 开包"，异常/失败跳过继续，汇总
+        routine.run = async (r, deps) => {
+            const steps = (r && r.steps) || [];
+            deps = deps || routine._makeDeps();
+            const results = [];
+            let okCount = 0, failCount = 0;
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                const rec = { step: i + 1, name: step.sbcName || "", status: "ok", reason: null, pack: null };
+                try {
+                    if (step.challengeId) {
+                        const sbcOk = await deps.fastSBC(step.sbcId, step.challengeId);
+                        if (!sbcOk) { rec.status = "fail"; rec.reason = "sbc-fail"; }
+                    }
+                    if (step.packId && rec.status !== "fail" && step.packMode !== "skip") {
+                        const pr = await deps.openPack(step.packId, step.packMode);
+                        rec.pack = pr && pr.ok ? "done" : ((pr && pr.reason) || "pack-fail");
+                    }
+                } catch (e) {
+                    console.warn("[C-04] routine step 异常", e);
+                    rec.status = "fail";
+                    rec.reason = "exception";
+                }
+                if (rec.status === "ok") okCount++; else failCount++;
+                results.push(rec);
+                if (deps.notify) deps.notify(fy(["routine.progress.notice", rec.name, i + 1, steps.length]), rec.status === "ok" ? 0 : 2);
+            }
+            return { ok: okCount, failed: failCount, results: results };
+        };
+
+        // 执行全部启用且未过期的流程
+        routine.runAll = async (deps) => {
+            const store = routine.load();
+            const out = [];
+            for (const r of store.routines) {
+                if (!r.enabled || routineIsExpired(r, Date.now())) continue;
+                out.push({ routineId: r.id, name: r.name, result: await routine.run(r, deps || routine._makeDeps()) });
+            }
+            return out;
+        };
+
+        // "加入流程"按钮入口：追加到默认流程
+        routine.addCurrentToDefault = () => {
+            const c = cntlr.current();
+            if (!c || !c._set || !c._challenge) return;
+            const store = routine.load();
+            let def = store.routines.find((r) => r.name === "默认流程");
+            if (!def) {
+                def = { id: "rt-default", name: "默认流程", enabled: true, daily: false, expiresDaysHours: null, createdAt: Date.now(), steps: [] };
+                store.routines.push(def);
+            }
+            def.steps.push({ sbcId: c._set.id, challengeId: c._challenge.id, sbcName: c._challenge.name || "", packId: null, packMode: "open" });
+            routine.save(store.routines);
+            events.notice(fy(["routine.added.notice", c._challenge.name || ""]), 0);
+        };
+
+        // 流程管理弹窗（参考 A 的 createRoutine/addSbc/editRoutine/deleteRoutine）
+        routine.managePopup = () => {
+            let store = routine.load();
+            let curIdx = 0;
+            if (!store.routines.length) {
+                store.routines.push({ id: "rt-default", name: "默认流程", enabled: true, daily: false, expiresDaysHours: null, createdAt: Date.now(), steps: [] });
+            }
+
+            const popupController = new EADialogViewController({
+                dialogOptions: [{ labelEnum: enums.UIDialogOptions.OK }],
+                message: "",
+                title: fy("routine.manage.title"),
+                type: EADialogView.Type.MESSAGE
+            });
+            popupController.init();
+            popupController.onExit.observe(popupController, (e, z) => {
+                e.unobserve(popupController);
+                popupController.dealloc();
+            });
+            const popupView = popupController.getView();
+            popupView.__msg.remove();
+            popupView.__btnContainer.querySelector("button").classList.remove("text");
+            popupView.__btnContainer.querySelector("button").classList.add("primary", "mini");
+            const box = document.createElement("div");
+
+            const header = document.createElement("div");
+            header.style.cssText = "display:flex;gap:.5rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;";
+            const sel = document.createElement("select");
+            sel.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;padding:.2rem .5rem;flex:1;";
+            const refreshSel = () => {
+                sel.innerHTML = "";
+                store.routines.forEach((r, i) => {
+                    const opt = document.createElement("option");
+                    opt.value = String(i);
+                    opt.textContent = r.name + (r.enabled ? "" : " (停用)");
+                    sel.appendChild(opt);
+                });
+                sel.value = String(curIdx);
+            };
+            const newBtn = document.createElement("button");
+            newBtn.textContent = fy("routine.manage.new");
+            newBtn.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;padding:.25rem .6rem;cursor:pointer;";
+            const delBtn = document.createElement("button");
+            delBtn.textContent = fy("routine.manage.delete");
+            delBtn.style.cssText = "background:#c0392b;color:#fff;border:none;border-radius:4px;padding:.25rem .6rem;cursor:pointer;";
+            const runBtn = document.createElement("button");
+            runBtn.textContent = fy("routine.manage.run");
+            runBtn.style.cssText = "background:#2196F3;color:#fff;border:none;border-radius:4px;padding:.25rem .8rem;cursor:pointer;";
+            header.appendChild(sel);
+            header.appendChild(newBtn);
+            header.appendChild(delBtn);
+            header.appendChild(runBtn);
+            box.appendChild(header);
+
+            const stepsBox = document.createElement("div");
+            stepsBox.style.cssText = "max-height:45vh;overflow-y:auto;";
+            box.appendChild(stepsBox);
+
+            const stepRow = (r, i) => {
+                const row = document.createElement("div");
+                row.style.cssText = "display:flex;align-items:center;gap:.4rem;padding:.3rem 0;border-bottom:1px solid #333;";
+                const name = document.createElement("span");
+                name.textContent = `${i + 1}. ${r.sbcName || r.sbcId}`;
+                name.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+                const modeSel = document.createElement("select");
+                modeSel.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;";
+                [["open", fy("routine.mode.open")], ["sellDup", fy("routine.mode.selldup")], ["sellAll", fy("routine.mode.sellall")], ["skip", fy("routine.mode.skip")]].forEach(([v, l]) => {
+                    const opt = document.createElement("option");
+                    opt.value = v;
+                    opt.textContent = l;
+                    modeSel.appendChild(opt);
+                });
+                modeSel.value = r.packMode;
+                modeSel.addEventListener("change", () => { store.routines[curIdx].steps[i].packMode = modeSel.value; routine.save(store.routines); });
+                const up = document.createElement("button");
+                up.textContent = "↑";
+                up.disabled = i === 0;
+                up.style.cssText = "background:#222;color:#ccc;border:1px solid #555;border-radius:4px;padding:0 .45rem;cursor:pointer;";
+                up.addEventListener("click", () => {
+                    if (i === 0) return;
+                    const steps = store.routines[curIdx].steps;
+                    [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]];
+                    routine.save(store.routines);
+                    renderSteps();
+                });
+                const down = document.createElement("button");
+                down.textContent = "↓";
+                down.disabled = i === store.routines[curIdx].steps.length - 1;
+                down.style.cssText = up.style.cssText;
+                down.addEventListener("click", () => {
+                    const steps = store.routines[curIdx].steps;
+                    if (i >= steps.length - 1) return;
+                    [steps[i], steps[i + 1]] = [steps[i + 1], steps[i]];
+                    routine.save(store.routines);
+                    renderSteps();
+                });
+                const rm = document.createElement("button");
+                rm.textContent = "✕";
+                rm.style.cssText = "background:#c0392b;color:#fff;border:none;border-radius:4px;padding:0 .5rem;cursor:pointer;";
+                rm.addEventListener("click", () => {
+                    store.routines[curIdx].steps.splice(i, 1);
+                    routine.save(store.routines);
+                    renderSteps();
+                });
+                row.appendChild(name);
+                row.appendChild(modeSel);
+                row.appendChild(up);
+                row.appendChild(down);
+                row.appendChild(rm);
+                return row;
+            };
+            const renderSteps = () => {
+                store = routine.load();
+                if (curIdx >= store.routines.length) curIdx = Math.max(0, store.routines.length - 1);
+                refreshSel();
+                stepsBox.innerHTML = "";
+                const cur = store.routines[curIdx];
+                if (!cur) return;
+                const title = document.createElement("div");
+                title.textContent = fy("routine.manage.steps") + " (" + cur.steps.length + ")";
+                title.style.cssText = "font-weight:bold;margin:.3rem 0;";
+                stepsBox.appendChild(title);
+                cur.steps.forEach((s, i) => stepsBox.appendChild(stepRow(s, i)));
+            };
+
+            sel.addEventListener("change", () => { curIdx = parseInt(sel.value, 10) || 0; renderSteps(); });
+            newBtn.addEventListener("click", () => {
+                store.routines.push({ id: "rt-" + Date.now(), name: fy("routine.manage.new") + Date.now() % 10000, enabled: true, daily: false, expiresDaysHours: null, createdAt: Date.now(), steps: [] });
+                curIdx = store.routines.length - 1;
+                routine.save(store.routines);
+                renderSteps();
+            });
+            delBtn.addEventListener("click", () => {
+                if (!store.routines.length) return;
+                store.routines.splice(curIdx, 1);
+                if (curIdx >= store.routines.length) curIdx = Math.max(0, store.routines.length - 1);
+                routine.save(store.routines);
+                renderSteps();
+            });
+            runBtn.addEventListener("click", () => {
+                const cur = store.routines[curIdx];
+                if (!cur) return;
+                popupController.dealloc();
+                events.showLoader();
+                routine.run(cur, null).then((result) => {
+                    events.hideLoader();
+                    events.notice(fy(["routine.done.notice", result.ok, result.failed]), result.failed > 0 ? 2 : 0);
+                });
+            });
+
+            renderSteps();
+            popupView.getRootElement().querySelector(".ea-dialog-view--body").prepend(box);
+            gPopupClickShield.setActivePopup(popupController);
         };
     }
 

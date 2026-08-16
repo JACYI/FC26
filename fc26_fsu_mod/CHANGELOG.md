@@ -9,7 +9,40 @@
 
 ---
 
-## v26.10-jacyi.3 (2026-08-16)
+## v26.10-jacyi.4 (2026-08-16)
+
+> 自定义流程编排 — 参考 A 脚本 routines：SBC 完成+开包循环，可排序可每日
+
+### 修改内容
+
+#### 1. routine 命名空间（[C-04] 块）
+- 纯函数（`//PURE:`）：`normalizeRoutine`（校验/补默认/非法 packMode 回退）/ `routineIsExpired`（daily + expiresDaysHours 从 createdAt 起算，0/0 视为未设置不过期）/ `normalizeRoutineStore`（版本号 + 过期过滤）
+- `routine.load/save`：持久化 GM key `fsu_routines`（带 v 版本号，结构可演进）；load 时清理过期流程
+- `routine.run` 执行引擎：逐步骤"完成 SBC → 开包"循环，异常/失败跳过继续，汇总；完成复用 `events.fastSBC`（B 链路），开包复用 `packs.open`（[C-01] 引擎，继承稳定性）
+- `routine.runAll`：执行全部启用且未过期的流程
+
+#### 2. UI（参考 A 的 createRoutine/addSbc/editRoutine/deleteRoutine）
+- SBC 详情 quickOther 容器新增"加入流程"（追加到默认流程）和"流程管理"按钮
+- 流程管理弹窗：流程选择/新建/删除、步骤列表（packMode 选择：开包/出售重复/全部出售/不开包）、步骤上移/下移/删除、"立即执行"
+- 每日模式与过期时间在数据模型层就绪（UI 开关后续可加）
+
+### 涉及文件
+
+- `fsu-mod.c.user.js`
+  - `[C-04]` 块（文件尾）— routine 全套
+  - SBC 详情按钮区（quickOther）— 加入流程/流程管理按钮
+  - `info.localization` — 新增 15 个三语键（routine.*）
+- 新增测试：`test_routine_model.js`（15 用例）
+
+### ⚠️ 待确认事项（手动验证清单）
+
+1. SBC 详情页出现"加入流程"和"流程管理"按钮
+2. 点击"加入流程"→ 通知"已加入流程"，流程管理弹窗可见该步骤
+3. 流程管理：新建流程、步骤上移/下移/删除、packMode 切换生效
+4. "立即执行"→ 按步骤顺序"完成SBC→开包"循环，进度通知逐步骤显示
+5. 某步骤 SBC 无法完成时跳过继续，汇总显示异常数
+6. 开包模式"全部出售"联动 [C-02] 红色确认
+7. 过期流程（daily + 超时）在 load 时被清理（重启页面后消失）
 
 > AUTO SOLVE 双算法 — 吸收 A 脚本自动求解（参数化策略），用户可切换 B 旧算法 / A 风格新算法
 
