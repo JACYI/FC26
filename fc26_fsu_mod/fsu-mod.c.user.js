@@ -17466,6 +17466,121 @@
             popupView.getRootElement().querySelector(".ea-dialog-view--body").prepend(box);
             gPopupClickShield.setActivePopup(popupController);
         };
+
+        // ============================================================
+        // [C-05] 通用 SBC 填充引擎（AUTO SOLVE 2.0，v26.10-jacyi.7）
+        // ------------------------------------------------------------
+        // 目标：融合 B 现有全部填充算法，按 SBC 需求类型自动路由，
+        //       所有 SBC（含联赛/国籍/俱乐部/化学/评分组合）都能填充
+        // 关键事实：getItemBy 的 default 分支支持任意直接字段匹配
+        //   （teamId/leagueId/nationId/rating/includePos 均可作 criteria）
+        // 纯函数（//PURE:）复制进 test_*.js 测试 —— 修改实现必须同步测试
+        // ============================================================
+        var fill = {};
+
+        //PURE: 同俱乐部跨联赛链接扩展（teamLinks: {teamId: [linkedTeamIds]}，可缺省）
+        // 返回：单值返回标量，多值返回数组（criteria 数组 = OR 语义）
+        function expandTeamIds(teamId, teamLinks) {
+            const ids = [parseInt(teamId, 10) || teamId];
+            if (teamLinks && teamLinks[teamId]) {
+                for (const t of teamLinks[teamId]) {
+                    if (ids.indexOf(t) === -1) ids.push(t);
+                }
+            }
+            return ids.length === 1 ? ids[0] : ids;
+        }
+
+        //PURE: 需求 → {groups, flags, summary}
+        // reqs: [{key, value, count}]（key 为 SBCEligibilityKey 值；由调用方从 EA 需求对象转换）
+        // groups: [{t: criteria键值对, c: 数量}] —— 只含可检索需求
+        // flags: {basic, extended, chem, rating, exact, pos} —— 跨槽全局约束由算法层处理
+        // summary: 全量清单（含不可检索/未知项，不静默丢弃）
+        function parseRequirements(reqs, miss) {
+            const groups = [];
+            const flags = { basic: false, extended: false, chem: false, rating: false, exact: false, pos: false };
+            const summary = [];
+            const push = (t, c) => {
+                const ex = groups.find((g) => {
+                    const k1 = Object.keys(g.t), k2 = Object.keys(t);
+                    return k1.length === k2.length && k1.every((k) => k2.indexOf(k) >= 0 && g.t[k] === t[k]);
+                });
+                if (ex) ex.c += c;
+                else groups.push({ t: t, c: c });
+            };
+            for (const r of (reqs || [])) {
+                const key = r.key, v = r.value, c = r.count || 1;
+                const rec = { key: key, kind: "other", count: c };
+                switch (key) {
+                    case "PLAYER_QUALITY":
+                    case "PLAYER_LEVEL":
+                        push({ rs: Math.max(0, (parseInt(v, 10) || 0) - 1) }, c);
+                        flags.basic = true; rec.kind = "basic"; break;
+                    case "PLAYER_RARITY":
+                        push({ rareflag: parseInt(v, 10) || 0 }, c);
+                        flags.basic = true; rec.kind = "basic"; break;
+                    case "PLAYER_RARITY_GROUP":
+                        // fv===4 用 gs；其余用 groups 直接匹配（实验性）
+                        if (v === 4) { push({ gs: 4 }, c); }
+                        else { push({ groups: v }, c); }
+                        flags.basic = true; rec.kind = "basic"; break;
+                    case "PLAYER_MIN_OVR":
+                        push({ GTrating: parseInt(v, 10) || 0 }, c);
+                        flags.basic = true; rec.kind = "basic"; break;
+                    case "CLUB_ID":
+                        push({ teamId: expandTeamIds(v, miss && miss.teamLinks) }, c);
+                        flags.extended = true; rec.kind = "extended"; break;
+                    case "LEAGUE_ID":
+                        push({ leagueId: parseInt(v, 10) || v }, c);
+                        flags.extended = true; rec.kind = "extended"; break;
+                    case "NATION_ID":
+                        push({ nationId: parseInt(v, 10) || v }, c);
+                        flags.extended = true; rec.kind = "extended"; break;
+                    case "PLAYER_EXACT_OVR":
+                        push({ rating: parseInt(v, 10) || 0 }, c);
+                        flags.extended = true; flags.exact = true; rec.kind = "extended"; break;
+                    case "PLAYER_POSITION":
+                        push({ includePos: v }, c);
+                        flags.extended = true; flags.pos = true; rec.kind = "extended"; break;
+                    case "TEAM_RATING":
+                        flags.rating = true; rec.kind = "rating"; break;
+                    case "CHEMISTRY_POINTS":
+                    case "ALL_PLAYERS_CHEMISTRY_POINTS":
+                        flags.chem = true; rec.kind = "chem"; break;
+                    default:
+                        rec.kind = "other"; break; // 未知需求透传，不静默丢弃
+                }
+                summary.push(rec);
+            }
+            return { groups: groups, flags: flags, summary: summary };
+        }
+
+        //PURE: 需求 flags → 算法链（全局算法在前，槽填充在后，校验兜底恒在末尾）
+        function routeAlgorithm(flags) {
+            const chain = [];
+            if (flags.chem) chain.push("chemFirst");
+            if (flags.rating) chain.push("ratingCombo");
+            if (flags.extended) chain.push("reqAware");
+            if (flags.basic || (!flags.extended && !flags.chem && !flags.rating)) chain.push("quickGreedy");
+            chain.push("verifyFallback");
+            return chain;
+        }
+
+        //PURE: 算法链构建（forced: "legacy"|"fodder" → 旧行为零变化；"auto"/null → 自动路由）
+        function buildChain(flags, forced) {
+            if (forced === "legacy" || forced === "fodder") {
+                return ["quickGreedy", "verifyFallback"];
+            }
+            return routeAlgorithm(flags);
+        }
+
+        //PURE: 尝试记录 + 池规模 → 失败原因键（优先级 pool→chem→rating→req→noanswer）
+        function classifyFailure(attempts, flags, poolSize, slotsNeeded) {
+            if (poolSize < slotsNeeded) return "fill.error.pool";
+            if (flags.chem && attempts.some((a) => a.name === "chemFirst" && a.status === "failed")) return "fill.error.chem";
+            if (flags.rating && attempts.some((a) => a.name === "ratingCombo" && a.status === "failed")) return "fill.error.rating";
+            if (flags.extended && attempts.some((a) => a.name === "reqAware" && a.status === "failed")) return "fill.error.req";
+            return "fill.error.noanswer";
+        }
     }
 
     function futgg(){
