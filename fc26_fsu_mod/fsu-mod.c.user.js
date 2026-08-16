@@ -16690,11 +16690,14 @@
             if (!packs._bar || !document.body.contains(packs._bar)) {
                 const bar = document.createElement("div");
                 bar.className = "fsu-packprogress";
+                //26.10-jacyi.6 [C-01] 进度条改为屏幕居中浮层面板（替代原底部条+居中loading双提示）
                 Object.assign(bar.style, {
-                    position: "fixed", bottom: "0", left: "0", right: "0",
-                    background: "rgba(0,0,0,.88)", color: "#fff", padding: ".55rem 1rem",
-                    fontSize: "1rem", zIndex: "99999", display: "flex",
-                    justifyContent: "center", alignItems: "center", gap: "1rem"
+                    position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                    background: "rgba(0,0,0,.9)", color: "#fff", padding: ".8rem 1.4rem",
+                    fontSize: "1.1rem", zIndex: "99999", display: "flex",
+                    justifyContent: "center", alignItems: "center", gap: "1rem",
+                    borderRadius: "10px", boxShadow: "0 4px 20px rgba(0,0,0,.5)",
+                    maxWidth: "90vw", flexWrap: "wrap"
                 });
                 const span = document.createElement("span");
                 span.id = "fsu-packprogress-text";
@@ -16935,9 +16938,8 @@
             }
             const targetPacks = allPacks.slice(0, packNum);
 
-            // 令牌 + 底部进度条
+            // 令牌 + 居中进度条（26.10-jacyi.6：不再改居中 loading 文案，避免双重提示）
             packs._cancelToken = { cancelled: false };
-            deps.changeLoadingText(["openpack.progress.loadertext1", packName]);
             const bar = packs._ensureBar(texts);
             bar.querySelector("#fsu-packprogress-text").textContent = formatProgressText(progress, targetPacks.length, texts);
 
@@ -16945,7 +16947,6 @@
                 for (let i = 0; i < targetPacks.length; i++) {
                     // 修复根因5：取消只读令牌，与 hideLoader 解耦
                     if (packs._cancelToken.cancelled) { cancelled = true; break; }
-                    deps.changeLoadingText(["openpack.progress.loadertext1", packName], ["openpack.progress.loadertext2", i + 1, targetPacks.length]);
 
                     const r = await packs.openOne(targetPacks[i], i, opts, deps, records);
                     if (r.fatal) { fatal = r; break; }
