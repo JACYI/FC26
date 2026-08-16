@@ -17554,12 +17554,14 @@
             return { groups: groups, flags: flags, summary: summary };
         }
 
-        //PURE: 需求 flags → 算法链（全局算法在前，槽填充在后，校验兜底恒在末尾）
+        //PURE: 需求 flags → 算法链（约束组先填：chem→extended→rating→basic，校验兜底恒在末尾）
+        // 顺序理由：quickGreedy/ratingCombo 会填满阵容，若扩展约束（俱乐部/国籍等）未先满足，
+        // 填满即 break 会导致约束缺失；reqAware 先保证约束组，再由全局算法补剩余槽
         function routeAlgorithm(flags) {
             const chain = [];
             if (flags.chem) chain.push("chemFirst");
-            if (flags.rating) chain.push("ratingCombo");
             if (flags.extended) chain.push("reqAware");
+            if (flags.rating) chain.push("ratingCombo");
             if (flags.basic || (!flags.extended && !flags.chem && !flags.rating)) chain.push("quickGreedy");
             chain.push("verifyFallback");
             return chain;
@@ -17574,13 +17576,245 @@
         }
 
         //PURE: 尝试记录 + 池规模 → 失败原因键（优先级 pool→chem→rating→req→noanswer）
+        // 判定条件用 status !== "ok"（partial 也视为该约束未被满足）
         function classifyFailure(attempts, flags, poolSize, slotsNeeded) {
             if (poolSize < slotsNeeded) return "fill.error.pool";
-            if (flags.chem && attempts.some((a) => a.name === "chemFirst" && a.status === "failed")) return "fill.error.chem";
-            if (flags.rating && attempts.some((a) => a.name === "ratingCombo" && a.status === "failed")) return "fill.error.rating";
-            if (flags.extended && attempts.some((a) => a.name === "reqAware" && a.status === "failed")) return "fill.error.req";
+            if (flags.chem && attempts.some((a) => a.name === "chemFirst" && a.status !== "ok")) return "fill.error.chem";
+            if (flags.rating && attempts.some((a) => a.name === "ratingCombo" && a.status !== "ok")) return "fill.error.rating";
+            if (flags.extended && attempts.some((a) => a.name === "reqAware" && a.status !== "ok")) return "fill.error.req";
             return "fill.error.noanswer";
         }
+
+        //PURE: 候选短名单截取（评分升序后取前 n）
+        function capShortlist(list, n) {
+            return list.slice(0, Math.max(0, n));
+        }
+
+        //PURE: 化学打分比较器（squadChem desc → playerChem desc → rating asc，对齐 getTemplate 化学择优）
+        function scoreCandidate(squadChem, playerChem, rating) {
+            return { squadChem: squadChem, playerChem: playerChem, rating: rating };
+        }
+        function compareScore(a, b) {
+            if (a.squadChem !== b.squadChem) return b.squadChem - a.squadChem;
+            if (a.playerChem !== b.playerChem) return b.playerChem - a.playerChem;
+            return (a.rating || 0) - (b.rating || 0);
+        }
+
+        // 生产依赖注入（futweb 闭包内）
+        fill._makeDeps = () => ({
+            getItemBy: (criteria, replaceData) => events.getItemBy(2, criteria, repositories.Item.getUnassignedItems(), replaceData),
+            ignorePlayerToCriteria: (c) => events.ignorePlayerToCriteria(c),
+            playerListFillSquad: (challenge, list, type) => events.playerListFillSquad(challenge, list, type),
+            virtualMeets: (challenge, players) => {
+                try {
+                    const nc = events.createVirtualChallenge(challenge);
+                    nc.squad.setPlayers(players);
+                    return !!nc.meetsRequirements();
+                } catch (e) { return false; }
+            },
+            pool: () => repositories.Item.getUnassignedItems(),
+            needRatingsCount: (t, s) => events.needRatingsCount(t, s),
+            getRatingPlayers: (s, r) => events.getRatingPlayers(s, r),
+            getTeamLinks: () => (repositories.TeamConfig && repositories.TeamConfig.teamLinks) || null,
+            notify: (t, n) => events.notice(t, n),
+            fy: (k) => fy(k)
+        });
+
+        // 算法库（Step 2：quickGreedy/reqAware/ratingCombo/verifyFallback；chemFirst 在 Step 3）
+        fill.algorithms = {};
+
+        // 快速贪心：只消费基础 4 类需求（rs/rareflag/gs/groups/GTrating），行为对齐现有 autoFill
+        fill.algorithms.quickGreedy = async (ctx, deps) => {
+            const groups = ctx.parsed.groups.filter((g) => {
+                const keys = Object.keys(g.t);
+                return keys.every((k) => ["rs", "rareflag", "gs", "groups", "GTrating"].indexOf(k) >= 0);
+            });
+            if (!groups.length) return { filled: [], status: "failed", reason: "no-basic-groups" };
+            const picked = [];
+            const excluded = ctx.excluded.slice();
+            let shortfall = false; // 槽充足但候选不足 = 约束未满足（即使填满也标 partial）
+            for (const g of groups) {
+                const need = Math.min(g.c, ctx.slotsNeeded - picked.length);
+                if (need <= 0) break;
+                const crit = deps.ignorePlayerToCriteria(Object.assign({}, g.t));
+                if (excluded.length) crit.NEdatabaseId = excluded;
+                crit.lock = false;
+                // fodder 模式：评分范围注入（沿用 solver._pendingRs 机制）
+                if (solver && solver._pendingRs) crit.rs = JSON.parse(JSON.stringify(solver._pendingRs));
+                // exact 评分约束：排除已占用的精确评分球员（EA EXACT_OVR 语义）
+                let res = deps.getItemBy(crit, ctx.pool);
+                if (ctx.excludeRatings && ctx.excludeRatings.size) {
+                    res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+                }
+                const take = (res || []).slice(0, need);
+                if (take.length < need) shortfall = true;
+                for (const it of take) { picked.push(it); excluded.push(it.databaseId); }
+            }
+            return {
+                filled: picked,
+                status: shortfall ? "partial" : (picked.length >= ctx.slotsNeeded ? "ok" : (picked.length ? "partial" : "failed")),
+                reason: picked.length ? null : "no-candidates"
+            };
+        };
+
+        // 需求感知：消费全部可检索组（含 teamId/leagueId/nationId/rating/includePos）
+        fill.algorithms.reqAware = async (ctx, deps) => {
+            const groups = ctx.parsed.groups;
+            if (!groups.length) return { filled: [], status: "failed", reason: "no-groups" };
+            const picked = [];
+            const excluded = ctx.excluded.slice();
+            let shortfall = false;
+            for (const g of groups) {
+                const need = Math.min(g.c, ctx.slotsNeeded - picked.length);
+                if (need <= 0) break;
+                const crit = deps.ignorePlayerToCriteria(Object.assign({}, g.t));
+                if (excluded.length) crit.NEdatabaseId = excluded;
+                crit.lock = false;
+                let res = deps.getItemBy(crit, ctx.pool);
+                if (ctx.excludeRatings && ctx.excludeRatings.size) {
+                    res = res.filter((it) => !ctx.excludeRatings.has(it.rating));
+                }
+                const take = (res || []).slice(0, need);
+                if (take.length < need) shortfall = true;
+                for (const it of take) { picked.push(it); excluded.push(it.databaseId); }
+                // exact 评分组：取完后占用该评分（后续组/算法不得再选同评分球员）
+                if (g.t.rating != null) {
+                    ctx.excludeRatings.add(g.t.rating);
+                }
+            }
+            return {
+                filled: picked,
+                status: shortfall ? "partial" : (picked.length >= ctx.slotsNeeded ? "ok" : (picked.length ? "partial" : "failed")),
+                reason: picked.length ? null : "no-candidates"
+            };
+        };
+
+        // 评分组合：TEAM_RATING 需求（needRatingsCount 组合 → getRatingPlayers → 终校验）
+        fill.algorithms.ratingCombo = async (ctx, deps) => {
+            const target = ctx.ratingTarget;
+            if (target == null) return { filled: [], status: "failed", reason: "no-rating-flag" };
+            let combos = [];
+            try { combos = deps.needRatingsCount(target, ctx.squad) || []; } catch (e) { combos = []; }
+            if (!combos.length) return { filled: [], status: "failed", reason: "rating-insufficient" };
+            for (const combo of combos) {
+                let players = [];
+                try { players = deps.getRatingPlayers(ctx.squad, combo.ratings) || []; } catch (e) { players = []; }
+                if (players.length >= ctx.slotsNeeded) {
+                    if (deps.virtualMeets(ctx.challenge, players)) {
+                        return { filled: players, status: "ok", reason: null };
+                    }
+                }
+            }
+            return { filled: [], status: "failed", reason: "rating-insufficient" };
+        };
+
+        // 校验兜底：受限回溯（候选 cap + virtualMeets 调用 cap）
+        fill.algorithms.verifyFallback = async (ctx, deps) => {
+            const slots = ctx.slotsNeeded;
+            if (slots <= 0) return { filled: [], status: "ok", reason: null };
+            let cands = [];
+            try { cands = deps.getItemBy(deps.ignorePlayerToCriteria({}), ctx.pool) || []; } catch (e) { cands = []; }
+            cands = cands.slice(0, 200).sort((a, b) => (a.rating || 0) - (b.rating || 0));
+            const used = new Set(ctx.excluded);
+            let calls = 0;
+            const MAX_CALLS = 2000;
+            const solve = (picked, startIdx) => {
+                if (calls > MAX_CALLS) return null;
+                if (picked.length === slots) {
+                    calls++;
+                    return deps.virtualMeets(ctx.challenge, picked) ? picked.slice() : null;
+                }
+                for (let i = startIdx; i < cands.length; i++) {
+                    const it = cands[i];
+                    if (used.has(it.databaseId)) continue;
+                    used.add(it.databaseId);
+                    picked.push(it);
+                    const r = solve(picked, i + 1);
+                    picked.pop();
+                    used.delete(it.databaseId);
+                    if (r) return r;
+                }
+                return null;
+            };
+            const result = solve([], 0);
+            if (!result) return { filled: [], status: "failed", reason: "no-solution" };
+            return { filled: result, status: "ok", reason: null };
+        };
+
+        // 引擎主流程：parse → 路由 → 逐算法（排除链）→ 终校验 → 失败分类
+        fill.run = async (challenge, opts, deps) => {
+            const o = Object.assign({ algorithm: "auto" }, opts);
+            deps = deps || fill._makeDeps();
+            // EA 需求对象 → 简化形
+            const reqs = [];
+            try {
+                const ers = (challenge && challenge.eligibilityRequirements) || [];
+                for (const er of ers) {
+                    reqs.push({
+                        key: er.getFirstKey ? er.getFirstKey() : er.key,
+                        value: er.getValue ? er.getValue() : er.value,
+                        count: er.getCount ? er.getCount() : 1
+                    });
+                }
+            } catch (e) { console.warn("[C-05] 需求解析异常", e); }
+            const parsed = parseRequirements(reqs, { teamLinks: deps.getTeamLinks ? deps.getTeamLinks() : null });
+            const totalSlots = (challenge && challenge.squad && challenge.squad.getNumOfRequiredPlayers) ? challenge.squad.getNumOfRequiredPlayers() : 11;
+            const pool = deps.pool();
+            const forced = o.algorithm === "legacy" ? "legacy" : (o.algorithm === "fodder" ? "fodder" : "auto");
+            const chain = buildChain(parsed.flags, forced);
+            const ctx = {
+                challenge: challenge,
+                parsed: parsed,
+                slotsNeeded: totalSlots,
+                ratingTarget: (challenge && challenge.squad && challenge.squad.getNumOfRequiredPlayers) ? null : null,
+                pool: pool,
+                excluded: [],
+                excludeRatings: new Set(), // EXACT_OVR 占用评分（跨算法共享）
+                squad: challenge && challenge.squad,
+                opts: o
+            };
+            // ratingTarget：从需求值取 TEAM_RATING
+            const ratingReq = reqs.find((r) => r.key === "TEAM_RATING");
+            if (ratingReq) ctx.ratingTarget = parseInt(ratingReq.value, 10) || 0;
+            const attempts = [];
+            const filled = [];
+            for (const name of chain) {
+                if (filled.length >= totalSlots) break;
+                ctx.slotsNeeded = totalSlots - filled.length;
+                const alg = fill.algorithms[name];
+                if (!alg) { attempts.push({ name: name, status: "failed", reason: "not-implemented", added: 0 }); continue; }
+                const r = await alg(ctx, deps);
+                const added = (r.filled || []).filter((it) => filled.indexOf(it) === -1);
+                filled.push.apply(filled, added);
+                ctx.excluded = ctx.excluded.concat(added.map((it) => it.databaseId));
+                attempts.push({ name: name, status: r.status, reason: r.reason, added: added.length });
+                if (r.status === "ok") break;
+            }
+            let ok = filled.length >= totalSlots;
+            if (ok && deps.virtualMeets) ok = deps.virtualMeets(challenge, filled);
+            const reason = ok ? null : classifyFailure(attempts, parsed.flags, pool.length, totalSlots);
+            return { ok: ok, filled: filled, reason: reason, algorithm: chain.join("+"), attempts: attempts };
+        };
+
+        // 按钮入口：填充 + 落阵保存
+        fill.runForCurrent = async (controller, opts) => {
+            const ch = controller && (controller._challenge || (controller.viewmodel && controller.viewmodel._challenge));
+            if (!ch) return { ok: false, reason: "no-challenge" };
+            const deps = fill._makeDeps();
+            events.showLoader();
+            try {
+                const r = await fill.run(ch, opts || {}, deps);
+                if (r.ok && r.filled.length) {
+                    deps.playerListFillSquad(ch, r.filled, 1);
+                    deps.notify(deps.fy("fill.done"), 0);
+                } else {
+                    deps.notify(deps.fy(r.reason || "fill.error.noanswer"), 2);
+                }
+                return r;
+            } finally {
+                events.hideLoader();
+            }
+        };
     }
 
     function futgg(){
