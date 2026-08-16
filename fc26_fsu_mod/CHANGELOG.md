@@ -49,7 +49,55 @@
 
 ---
 
-## v26.09-mod-08 (2026-06-29)
+## v26.09-mod-09c (2026-07-05)
+
+> 修复球员加载失败 — 恢复 getStats callback 包裹搜索循环结构
+
+### 修改内容
+
+#### 1. `events.reloadPlayers` 重写：恢复 mod-06 结构
+- **问题**：mod-09b 将 `getStats()` 拆为独立 Promise 获取总页数，搜索循环移出 callback 在外部运行，导致俱乐部数据同步上下文丢失。`search()` 在 getStats observer 已 cleanup 后调用，可能返回异常结果。
+- **根因**：EA 的 `services.Club.getStats()` 有同步俱乐部数据的副作用。原版代码中搜索循环在 `getStats` 的 observe callback 内部运行（`observe(e, ...)` 使用 stats 上下文），保证了数据同步完毕后才搜索。mod-09b 改为了 `getStats()` → resolve → 搜索，上下文断裂。
+- **修复**：
+  - 恢复 mod-06 的结构：搜索循环回到 `getStats().observe()` callback **内部**
+  - 搜索 observer 使用 stats 上下文 `e`（恢复 `services.Club.search(c).observe(e, ...)`）
+  - 加回跳过条件 `stat.count === clubRepo.items.length`（已加载时跳过）
+  - 保留 mod-07 的可配置 `pageSize`/`pageDelay`
+  - 保留 mod-09b 的 getStats 失败重试（最多3次）
+  - 保留 `searchStorageItems` await 调用
+- **效果**：恢复与原始代码一致的执行上下文，搜索时俱乐部数据已同步完毕。
+
+### 涉及文件
+
+- `working/【FSU】EAFC FUT WEB 增强器-26.09.user.js`
+  - `events.reloadPlayers` — 恢复 getStats callback 包裹结构
+
+---
+
+## v26.09-mod-09 (2026-07-05)
+
+> 修复球员加载失败 — 去掉 OVR 范围拆分 + 加回 getStats
+
+### 修改内容
+
+#### 1. `events.reloadPlayers` 重写：放弃 OVR 范围拆分，整批加载
+- **问题**：
+  - mod-07 删除了 `getStats()` 调用，导致俱乐部数据未同步时 `search()` 可能返回空（`?` 显示 + 加载失败）
+  - mod-09 初版加回了 `getStats()` 能显示 `0/16`，但 `ovrMin`/`ovrMax` 在 `UTSearchCriteriaDTO` 俱乐部搜索中**不生效**，优先/后台 OVR 范围过滤后的 `search()` 返回 0 条结果
+- **修复**：
+  - 加回 `services.Club.getStats()` 确保数据同步，获取总球员数显示正确页码
+  - **去掉 OVR 范围拆分**（`priorityRanges`/`bgRanges`），改为整批加载全部球员
+  - 保留大页 size（默认 500）和页间延迟配置（默认 0.3s）
+  - `getStats` 失败时带退避重试（最多3次）
+
+### 涉及文件
+
+- `working/【FSU】EAFC FUT WEB 增强器-26.09.user.js`
+  - `events.reloadPlayers` — 去 OVR 范围拆分 + 加回 getStats
+
+---
+
+
 
 > 记录每日SBC完成顺序 — 按时间排序显示在SBC计数弹窗中
 

@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "WebFetch(domain:www.futbin.com)",
       "WebFetch(domain:www.fut.gg)",

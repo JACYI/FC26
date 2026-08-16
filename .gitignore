@@ -35,3 +35,6 @@ lang_*.png
 slot_*.txt
 squad_*.txt
 sbc_status_report*
+
+# Nested fc26_fsu_mod git repo (own history)
+fc26_fsu_mod/.git/
