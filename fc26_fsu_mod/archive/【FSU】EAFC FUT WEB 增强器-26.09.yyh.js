@@ -9763,14 +9763,29 @@
                                 bulkMixedBtn.getRootElement().style.fontSize = "75%";
                                 bulkMixedBtn.getRootElement().style.padding = "2px 4px";
                                 bulkMixedBtn.__currencyLabel.style.fontSize = "75%";
-                                item.__articleActionContainer.prepend(bulkMixedBtn.getRootElement())
-                                item.__articleActionContainer.style.display = "flex";
-                                item.__articleActionContainer.style.gap = "0.5rem";
-                                item.__articleActionContainer.style.flexWrap = "nowrap";
+                                //26.10-mod-04-fix 非球员包没有__articleActionContainer，需创建或复用容器
+                                let mixedContainer = item.__articleActionContainer;
+                                if (!mixedContainer) {
+                                    mixedContainer = events.createElementWithConfig("div", {
+                                        style: { display: "flex", gap: "0.5rem", flexWrap: "nowrap" }
+                                    });
+                                    // 在卡片描述信息后面插入按钮行
+                                    if (item._fsuExtraInfo) {
+                                        item._fsuExtraInfo.after(mixedContainer);
+                                    } else if (item.__articleDesc) {
+                                        item.__articleDesc.after(mixedContainer);
+                                    } else {
+                                        item.getRootElement().appendChild(mixedContainer);
+                                    }
+                                }
+                                mixedContainer.prepend(bulkMixedBtn.getRootElement())
+                                mixedContainer.style.display = "flex";
+                                mixedContainer.style.gap = "0.5rem";
+                                mixedContainer.style.flexWrap = "nowrap";
                                 bulkMixedBtn.getRootElement().style.flex = "1";
                                 bulkMixedBtn.getRootElement().style.minWidth = "0";
-                                for (let i = 0; i < item.__articleActionContainer.children.length; i++) {
-                                    const child = item.__articleActionContainer.children[i];
+                                for (let i = 0; i < mixedContainer.children.length; i++) {
+                                    const child = mixedContainer.children[i];
                                     if (!child.classList.contains("fsu-bulkopen-mixed")) {
                                         child.style.flex = "1";
                                         child.style.minWidth = "0";
@@ -10519,7 +10534,10 @@
                 view = controller.getView(),
                 SBCSetEntity = services.SBC.repository.getSetById(id),
                 challenge;
-            events.showLoader();
+            //26.09-mod-09 批量模式后续轮次保留遮罩不闪现加载动画（保持进度文字连贯）
+            if (!info.run._fastBatchInfo || !info.run._fastBatchInfo._progressShown) {
+                events.showLoader();
+            }
             //正在执行一键三连(X/3) 首轮即显示进度
             if (info.run._fastBatchInfo && !info.run._fastBatchInfo._progressShown) {
                 info.run._fastBatchInfo._progressShown = true;
@@ -10639,7 +10657,10 @@
                             events.notice(`fastsbc.error_${errorCode}`,2)
                         }
                     });
-                    events.hideLoader();
+                    //26.09-mod-09 批量模式保留遮罩不隐藏（后续轮次直接更新进度文字）
+                    if (!info.run._fastBatchInfo) {
+                        events.hideLoader();
+                    }
                 }else if(NetworkErrorManager.checkCriticalStatus(t.status)){
                     NetworkErrorManager.handleStatus(t.status);
                     events.hideLoader();
@@ -10670,7 +10691,7 @@
             if (info.run._fastBatchInfo) {
                 info.run._fastBatchInfo.current++;
                 if (info.run._fastBatchInfo.current < info.run._fastBatchInfo.total) {
-                    events.showLoader();
+                    //26.09-mod-09 批量轮次间保留遮罩不闪现加载动画，仅更新进度文字
                     events.changeLoadingText(["fastsbc.batch_progress", info.run._fastBatchInfo.current + 1, info.run._fastBatchInfo.total], fy("fastsbc.batch_canceltext"));
                     //点击屏幕中断批量：用户点击加载文字即取消剩余次数
                     const _fsuCancelBatch = () => {
@@ -10685,6 +10706,7 @@
                     return;
                 }
                 delete info.run._fastBatchInfo;
+                events.hideLoader();
             }
             var rewardsController = new UTGameRewardsViewController(set.awards);
             rewardsController.init(),
@@ -12343,22 +12365,6 @@
         //24.23 添加拦截器来截获提交的SBC
         const originalSubmitChallenge = UTSBCService.prototype.submitChallenge;
         UTSBCService.prototype.submitChallenge = function(o, a, i, n) {
-            //提交前捕获阵容评分（用于缓存上次提交记录）
-            let _cachedRatings = null, _cachedChallengeId = null;
-            try {
-                if (o && o.squad && o.id) {
-                    const players = o.squad.getFieldPlayers();
-                    const ratings = players
-                        .filter(p => p._item && typeof p._item.rating === 'number')
-                        .map(p => p._item.rating)
-                        .sort((a, b) => b - a);
-                    if (ratings.length === 11) {
-                        _cachedRatings = ratings.join(",");
-                        _cachedChallengeId = o.id;
-                    }
-                }
-            } catch(e) {}
-
             let r = originalSubmitChallenge.apply(this, arguments);
             let s = this;
             r.observe(this, function(e,t) {
@@ -12394,20 +12400,6 @@
                         ts: Date.now()
                     });
                     GM_setValue("SBCDailyLog", JSON.stringify(dailyLog));
-                    //缓存本次提交评分，供阵容补全默认填充（30条上限，超过删最旧10条）
-                    if (_cachedRatings && _cachedChallengeId && t.data && t.data.setId) {
-                        try {
-                            const key = `${t.data.setId}#${_cachedChallengeId}`;
-                            let cache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
-                            cache[key] = {v: _cachedRatings, ts: Date.now()};
-                            const keys = Object.keys(cache);
-                            if (keys.length > 30) {
-                                keys.sort((a, b) => (cache[a].ts || 0) - (cache[b].ts || 0));
-                                keys.slice(0, 10).forEach(k => delete cache[k]);
-                            }
-                            GM_setValue("SBCLastRatings", JSON.stringify(cache));
-                        } catch(e) {}
-                    }
                 }
             });
             return r;
@@ -15405,22 +15397,6 @@
                             let va = thisController._squad.getNumOfRequiredPlayers() - thisController._squad.getFieldPlayers().filter(i => i.isValid()).length,
                             fillRating = events.needRatingsCount(hasRating, thisController._squad),
                             inputText;
-
-                            //仅当阵容完全为空（va===11）时使用上次提交的评分缓存
-                            //一旦已有球员填充，缓存评分无意义，必须重新计算
-                            try {
-                                if (va === 11) {
-                                    const setId = thisController._set?.id;
-                                    const challengeId = thisController._challenge?.id;
-                                    if (setId && challengeId) {
-                                        const allCache = JSON.parse(GM_getValue("SBCLastRatings", "{}"));
-                                        const lastEntry = allCache[`${setId}#${challengeId}`];
-                                        if (lastEntry) {
-                                            inputText = [fy("squadcmpl.placeholder"), lastEntry.v || lastEntry];
-                                        }
-                                    }
-                                }
-                            } catch(e) {}
 
                             if (!inputText) {
                                 if(fillRating.length && fillRating[0].lackRatings.length == 0 && fillRating[0].ratings.length && hasRating){
